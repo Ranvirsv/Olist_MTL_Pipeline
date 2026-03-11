@@ -1,0 +1,22 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+
+# Virtual environments
+.venv
+__pycache__/
+*.pyc
+
+# Data & Databases (NEVER PUSH THESE)
+data/
+*.csv
+*.duckdb
+*.duckdb.wal
+
+# OS Files
+.DS_Store
