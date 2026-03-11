@@ -1,18 +1,19 @@
 import duckdb
 from pydantic import ValidationError
-from src.schemas import OlistAnalyticalRaw
+from src.schemas import OlistAnalyticalRow
 from tqdm import tqdm
+from loguru import logger
 
 def build_data_warehouse(root_dir: str):
     duckdb_olist_conn = duckdb.connect(f"{root_dir}/data/olist.duckdb")
-    print("Connected to database")
+    logger.info("Connected to database")
 
     with open(f"{root_dir}/sql/build_db.sql", "r") as f:
         build_db_file = f.read()
 
     duckdb_olist_conn.execute(build_db_file)
 
-    print("Database built successfully")
+    logger.success("Database built successfully")
 
     query = "SELECT * FROM analytical_base_table;"
 
@@ -24,16 +25,15 @@ def build_data_warehouse(root_dir: str):
 
     for i, record in tqdm(enumerate(records[:10000])):
         try:
-            validated_row = OlistAnalyticalRaw(**record)
+            validated_row = OlistAnalyticalRow(**record)
             validated_data.append(validated_row)
         except ValidationError as e:
-            print(f"\nValidation failed at index: {i}")
-            print(record)
+            logger.error(f"\nValidation failed at index: {i}")
             val_errors += 1
 
 
     if val_errors > 0:
-        print(f"\nPipeline Failed: Found {val_errors} schema violations.!")
+        logger.error(f"\nPipeline Failed: Found {val_errors} schema violations.!")
     else:
-        print("\nData Contract Passed! Database is perfectly structured!")
+        logger.success("\nData Contract Passed! Database is perfectly structured!")
 
