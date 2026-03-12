@@ -1,12 +1,12 @@
 -- 1. Ingest All 8 Raw CSVs into DuckDB Tables
-CREATE OR REPLACE TABLE customers AS SELECT * FROM read_csv_auto('/data/raw/olist_customers_dataset.csv');
-CREATE OR REPLACE TABLE orders AS SELECT * FROM read_csv_auto('/data/raw/olist_orders_dataset.csv');
-CREATE OR REPLACE TABLE reviews AS SELECT * FROM read_csv_auto('/data/raw/olist_order_reviews_dataset.csv');
-CREATE OR REPLACE TABLE items AS SELECT * FROM read_csv_auto('/data/raw/olist_order_items_dataset.csv');
-CREATE OR REPLACE TABLE products AS SELECT * FROM read_csv_auto('/data/raw/olist_products_dataset.csv');
-CREATE OR REPLACE TABLE sellers AS SELECT * FROM read_csv_auto('/data/raw/olist_sellers_dataset.csv');
-CREATE OR REPLACE TABLE payments AS SELECT * FROM read_csv_auto('/data/raw/olist_order_payments_dataset.csv');
-CREATE OR REPLACE TABLE geolocation AS SELECT * FROM read_csv_auto('/data/raw/olist_geolocation_dataset.csv');
+CREATE OR REPLACE TABLE customers AS SELECT * FROM read_csv_auto('./data/raw/olist_customers_dataset.csv');
+CREATE OR REPLACE TABLE orders AS SELECT * FROM read_csv_auto('./data/raw/olist_orders_dataset.csv');
+CREATE OR REPLACE TABLE reviews AS SELECT * FROM read_csv_auto('./data/raw/olist_order_reviews_dataset.csv');
+CREATE OR REPLACE TABLE items AS SELECT * FROM read_csv_auto('./data/raw/olist_order_items_dataset.csv');
+CREATE OR REPLACE TABLE products AS SELECT * FROM read_csv_auto('./data/raw/olist_products_dataset.csv');
+CREATE OR REPLACE TABLE sellers AS SELECT * FROM read_csv_auto('./data/raw/olist_sellers_dataset.csv');
+CREATE OR REPLACE TABLE payments AS SELECT * FROM read_csv_auto('./data/raw/olist_order_payments_dataset.csv');
+CREATE OR REPLACE TABLE geolocation AS SELECT * FROM read_csv_auto('./data/raw/olist_geolocation_dataset.csv');
 
 -- 2. Build the Unified Analytical View
 CREATE OR REPLACE VIEW analytical_base_table AS 
@@ -27,10 +27,21 @@ distinct_geo AS (
         AVG(geolocation_lng) AS lng
     FROM geolocation
     GROUP BY geolocation_zip_code_prefix
+),
+-- CTE 3: Aggrigated items
+aggregated_items AS (
+    SELECT 
+        order_id,
+        SUM(price) AS total_price,
+        SUM(freight_value) AS total_freight_value,
+        MIN(seller_id)     AS seller_id,
+        MIN(product_id)    AS product_id
+    FROM items
+    GROUP BY order_id
 )
 
 SELECT 
-    o.order_id,
+    DISTINCT(o.order_id),
     c.customer_unique_id,
     c.customer_city,
     c.customer_state,
@@ -42,8 +53,8 @@ SELECT
     r.review_comment_message,
 
     -- FEATURES
-    i.price,
-    i.freight_value,
+    i.total_price,
+    i.total_freight_value,
     p.product_weight_g,
     p.product_category_name,
     s.seller_state,
@@ -59,7 +70,7 @@ SELECT
 FROM orders o
 JOIN customers c ON o.customer_id = c.customer_id
 LEFT JOIN reviews r ON o.order_id = r.order_id
-LEFT JOIN items i ON o.order_id = i.order_id
+LEFT JOIN aggregated_items i ON o.order_id = i.order_id
 LEFT JOIN products p ON i.product_id = p.product_id
 LEFT JOIN sellers s ON i.seller_id = s.seller_id
 LEFT JOIN aggregated_payments pay ON o.order_id = pay.order_id

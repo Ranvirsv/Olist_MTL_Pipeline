@@ -23,7 +23,7 @@ def build_data_warehouse(root_dir: str):
     validated_data = []
     val_errors = 0
 
-    for i, record in tqdm(enumerate(records[:10000])):
+    for i, record in tqdm(enumerate(records)):
         try:
             validated_row = OlistAnalyticalRow(**record)
             validated_data.append(validated_row)
