@@ -20,3 +20,6 @@ data/
 
 # OS Files
 .DS_Store
+
+# notbook checkpoints
+.ipynb_checkpoints
