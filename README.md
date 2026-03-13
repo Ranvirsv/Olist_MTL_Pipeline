@@ -39,15 +39,160 @@ A Jupyter notebook cannot run in production. This project demonstrates the jump 
 
 ## 🛠 The Tech Stack
 
-This stack replaces standard academic tools with modern, high-performance industry standards:
-
-- **Environment & Dependencies**: `uv` _(Rust-based, lightning-fast reproducible virtual environments)_
-- **Data Engineering (ETL)**: `DuckDB` _(Serverless analytical SQL)_ and `Pydantic` _(Strict Data Contracts)_
-- **Data Versioning**: `DVC` _(Git for massive datasets)_
-- **Statistical Research**: `scipy.stats` and `statsmodels` _(Hypothesis testing)_
-- **Deep Learning**: `PyTorch` _(Custom MMoE architecture)_
-- **Experiment Tracking**: `MLflow` _(Logging hyperparameters, gate temperatures, and loss curves)_
-- **High-Performance Serving**: `ONNX Runtime` _(Optimized inference)_ and `FastAPI` _(REST API)_
-- **CI/CD & UI**: `GitHub Actions` _(Automated testing)_, `Docker`, and `Streamlit` _(Interactive dashboard)_
+| Layer | Tool | Status |
+|-------|------|--------|
+| **Environment & Dependencies** | `uv` _(Rust-based, reproducible virtual environments)_ | ✅ Active |
+| **Data Engineering (ETL)** | `DuckDB` _(Serverless analytical SQL)_ | ✅ Active |
+| **Data Contracts** | `Pydantic` _(Strict schema validation)_ | ✅ Active |
+| **Statistical Research** | `scipy.stats` _(Hypothesis testing)_ | ✅ Active |
+| **Visualization** | `matplotlib` + `seaborn` _(Custom Plotter library)_ | ✅ Active |
+| **Data Versioning** | `DVC` _(Git for massive datasets)_ | 🔲 Planned |
+| **Deep Learning** | `PyTorch` _(Custom MMoE architecture)_ | 🔲 Planned |
+| **Experiment Tracking** | `MLflow` _(Hyperparameters & loss curves)_ | 🔲 Planned |
+| **Model Export** | `ONNX Runtime` _(Optimized inference)_ | 🔲 Planned |
+| **Serving** | `FastAPI` _(REST API)_ | 🔲 Planned |
+| **CI/CD & UI** | `GitHub Actions`, `Docker`, `Streamlit` | 🔲 Planned |
 
 ---
+
+## 📂 Project Structure
+
+```
+Olist_MTL_Pipeline/
+├── main.py                  # Pipeline entry point
+├── pyproject.toml           # uv project config & dependencies
+├── uv.lock                  # Reproducible dependency lock
+│
+├── data/                    # ⚠️ Entire folder is gitignored
+│   ├── raw/                 # 9 raw Olist CSV files
+│   ├── olist.duckdb         # Built DuckDB data warehouse
+│   └── splits/
+│       ├── df_model.parquet # Full modelling-ready dataset
+│       ├── train.parquet    # Training split
+│       ├── val.parquet      # Validation split
+│       └── test.parquet     # Test split
+│
+├── sql/
+│   └── build_db.sql         # DuckDB warehouse DDL & analytical view
+│
+├── src/
+│   ├── etl.py               # ETL orchestrator + data validation
+│   ├── schemas.py           # Pydantic data contracts
+│   └── features/
+│       └── haversine.py     # Haversine distance feature
+│
+└── EDA/
+    ├── plots.py                     # Reusable Pydantic-configured plotting library
+    └── 01_hypothesis_testing.ipynb  # Statistical hypothesis testing notebook
+```
+
+---
+
+## ✅ Work Completed
+
+### Phase 0 — Data Engineering (ETL) ✅
+
+#### 1. Raw Data Ingestion
+
+All **9 raw Olist CSV files** are ingested into DuckDB tables via `sql/build_db.sql`:
+
+| Table | Source File |
+|-------|------------|
+| `customers` | `olist_customers_dataset.csv` |
+| `orders` | `olist_orders_dataset.csv` |
+| `reviews` | `olist_order_reviews_dataset.csv` |
+| `items` | `olist_order_items_dataset.csv` |
+| `products` | `olist_products_dataset.csv` |
+| `sellers` | `olist_sellers_dataset.csv` |
+| `payments` | `olist_order_payments_dataset.csv` |
+| `geolocation` | `olist_geolocation_dataset.csv` |
+
+#### 2. Analytical Base Table (SQL View)
+
+A single `analytical_base_table` view is built via **3 CTEs** that handle the one-to-many and duplicate-resolution problems in the raw data:
+
+- **`aggregated_payments`** — Sums `payment_value` and takes `MAX(installments)` per order (handles multiple payment methods).
+- **`distinct_geo`** — Averages duplicate lat/lng entries per zip code prefix.
+- **`aggregated_items`** — Sums price and freight per order, resolves to a single seller/product.
+
+The final `SELECT` joins all 8 tables, computes `delivery_days` (date diff between purchase and delivery), and filters to **delivered orders only**.
+
+#### 3. Pydantic Data Contracts (`src/schemas.py`)
+
+Every row of the analytical base table is validated against a strict `OlistAnalyticalRow` Pydantic model that enforces:
+
+- **Type safety** — `datetime`, `str`, `float`, `int` types on all fields.
+- **Business rules** — `review_score ∈ [1, 5]`, `price ≥ 0`, `freight_value ≥ 0`, `customer_state` is exactly 2 characters, etc.
+- **NaN handling** — A custom `@field_validator` converts `float('nan')` → `None` across all optional fields, preventing silent data corruption.
+
+The ETL pipeline (`src/etl.py`) runs every row through this contract and logs any schema violations via `loguru` before failing or passing the pipeline.
+
+#### 4. Data Splits
+
+The modelling-ready dataset has been split into **train / validation / test** Parquet files stored in `data/splits/`.
+
+---
+
+### Phase 1 — EDA & Hypothesis Testing ✅ (in progress)
+
+#### Reusable Plotting Library (`EDA/plots.py`)
+
+A production-grade plotting module built around a Pydantic-configured `Plotter` class:
+
+- **8 plot methods** — `histogram`, `boxplot`, `scatter`, `countplot`, `barplot`, `heatmap`, `pairplot`, `lineplot`.
+- **`PlotConfig`** — Pydantic model for validated, serializable plot settings (style, figsize, dpi, save directory, etc.).
+- **Every method returns `(fig, ax)`** for further customization.
+- **Auto-save support** — Optionally saves figures to a configurable directory.
+
+#### Hypothesis Testing (`EDA/01_hypothesis_testing.ipynb`)
+
+Statistical hypothesis testing to validate the core assumptions underpinning the MMoE architecture.
+
+**Key findings:**
+
+- **Mann-Whitney (p ≈ 0, r=0.386):** Low-rated orders take significantly longer to deliver — statistically justifies the MMoE architecture.
+- **Spearman r=0.54 (p ≈ 0):** Strong positive correlation between geo distance and delivery time — validates `geo_distance_km` as a feature.
+- **Chi-squared (p ≈ 0):** Negative review rate nearly doubles for late orders (14.8% → 27.9%) — confirms task correlation.
+
+---
+
+## 🔑 Key Design Decisions
+
+- **Time-based train/val/test split** — Random splitting on time-series order data causes leakage. Splits are chronological: train ends Apr 2018, val ends Jun 2018, test ends Aug 2018.
+- **Outlier cap at p99 (46 days)** — Orders above the 99th percentile are fulfilment failures, not legitimate long-distance deliveries. 918 rows removed.
+- **y=1 = negative review** — The minority class (25%) is labelled positive for `BCEWithLogitsLoss`. `pos_weight=3.74` compensates for the 3:1 class imbalance.
+- **Aggregated items CTE** — Direct `JOIN` on items inflates rows for multi-item orders. Items are aggregated per `order_id` before joining.
+
+---
+
+## 🚀 Quick Start
+
+```bash
+# 1. Clone the repo
+git clone <repo-url> && cd Olist_MTL_Pipeline
+
+# 2. Install dependencies with uv
+uv sync
+
+# 3. Set up environment
+#    Create a .env file with PROJECT_ROOT pointing to the project directory
+echo "PROJECT_ROOT=$(pwd)" > .env
+
+# 4. Place raw CSVs in data/raw/
+
+# 5. Run the ETL pipeline
+uv run python main.py
+```
+
+---
+
+## 🗺 Roadmap
+
+- [x] **Phase 0 — Data Engineering** — DuckDB warehouse, Pydantic contracts, data splits
+- [/] **Phase 1 — EDA & Hypothesis Testing** — Statistical validation of architecture assumptions
+- [ ] **Phase 2 — Feature Engineering** — Haversine distance, temporal features, encoding pipelines
+- [ ] **Phase 3 — MMoE Model + MLflow** — Multi-gate Mixture-of-Experts in PyTorch, experiment tracking
+- [ ] **Phase 4 — Model Export** — ONNX Runtime optimized inference
+- [ ] **Phase 5 — Serving** — FastAPI REST endpoint
+- [ ] **Phase 6 — CI/CD & UI** — GitHub Actions, Docker, Streamlit dashboard
+- [ ] **Phase 7 — Data Versioning** — DVC integration
