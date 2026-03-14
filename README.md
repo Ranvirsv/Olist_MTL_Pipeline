@@ -39,19 +39,19 @@ A Jupyter notebook cannot run in production. This project demonstrates the jump 
 
 ## 🛠 The Tech Stack
 
-| Layer | Tool | Status |
-|-------|------|--------|
-| **Environment & Dependencies** | `uv` _(Rust-based, reproducible virtual environments)_ | ✅ Active |
-| **Data Engineering (ETL)** | `DuckDB` _(Serverless analytical SQL)_ | ✅ Active |
-| **Data Contracts** | `Pydantic` _(Strict schema validation)_ | ✅ Active |
-| **Statistical Research** | `scipy.stats` _(Hypothesis testing)_ | ✅ Active |
-| **Visualization** | `matplotlib` + `seaborn` _(Custom Plotter library)_ | ✅ Active |
-| **Data Versioning** | `DVC` _(Git for massive datasets)_ | 🔲 Planned |
-| **Deep Learning** | `PyTorch` _(Custom MMoE architecture)_ | 🔲 Planned |
-| **Experiment Tracking** | `MLflow` _(Hyperparameters & loss curves)_ | 🔲 Planned |
-| **Model Export** | `ONNX Runtime` _(Optimized inference)_ | 🔲 Planned |
-| **Serving** | `FastAPI` _(REST API)_ | 🔲 Planned |
-| **CI/CD & UI** | `GitHub Actions`, `Docker`, `Streamlit` | 🔲 Planned |
+| Layer                          | Tool                                                   | Status     |
+| ------------------------------ | ------------------------------------------------------ | ---------- |
+| **Environment & Dependencies** | `uv` _(Rust-based, reproducible virtual environments)_ | ✅ Active  |
+| **Data Engineering (ETL)**     | `DuckDB` _(Serverless analytical SQL)_                 | ✅ Active  |
+| **Data Contracts**             | `Pydantic` _(Strict schema validation)_                | ✅ Active  |
+| **Statistical Research**       | `scipy.stats` _(Hypothesis testing)_                   | ✅ Active  |
+| **Visualization**              | `matplotlib` + `seaborn` _(Custom Plotter library)_    | ✅ Active  |
+| **Data Versioning**            | `DVC` _(Git for massive datasets)_                     | 🔲 Planned |
+| **Deep Learning**              | `PyTorch` _(Custom MMoE architecture)_                 | 🔲 Planned |
+| **Experiment Tracking**        | `MLflow` _(Hyperparameters & loss curves)_             | 🔲 Planned |
+| **Model Export**               | `ONNX Runtime` _(Optimized inference)_                 | 🔲 Planned |
+| **Serving**                    | `FastAPI` _(REST API)_                                 | 🔲 Planned |
+| **CI/CD & UI**                 | `GitHub Actions`, `Docker`, `Streamlit`                | 🔲 Planned |
 
 ---
 
@@ -96,16 +96,16 @@ Olist_MTL_Pipeline/
 
 All **9 raw Olist CSV files** are ingested into DuckDB tables via `sql/build_db.sql`:
 
-| Table | Source File |
-|-------|------------|
-| `customers` | `olist_customers_dataset.csv` |
-| `orders` | `olist_orders_dataset.csv` |
-| `reviews` | `olist_order_reviews_dataset.csv` |
-| `items` | `olist_order_items_dataset.csv` |
-| `products` | `olist_products_dataset.csv` |
-| `sellers` | `olist_sellers_dataset.csv` |
-| `payments` | `olist_order_payments_dataset.csv` |
-| `geolocation` | `olist_geolocation_dataset.csv` |
+| Table         | Source File                        |
+| ------------- | ---------------------------------- |
+| `customers`   | `olist_customers_dataset.csv`      |
+| `orders`      | `olist_orders_dataset.csv`         |
+| `reviews`     | `olist_order_reviews_dataset.csv`  |
+| `items`       | `olist_order_items_dataset.csv`    |
+| `products`    | `olist_products_dataset.csv`       |
+| `sellers`     | `olist_sellers_dataset.csv`        |
+| `payments`    | `olist_order_payments_dataset.csv` |
+| `geolocation` | `olist_geolocation_dataset.csv`    |
 
 #### 2. Analytical Base Table (SQL View)
 
@@ -165,6 +165,28 @@ Statistical hypothesis testing to validate the core assumptions underpinning the
 
 ---
 
+## Phase 2 - Feature Engineering
+
+### Cyclic Encoding (`src/features/cyclic_encoder.py`)
+
+Cyclic encoding is a feature encoding technique that converts periodic features (e.g. time of day, day of week) into a continuous space that captures the periodicity of the feature.
+
+### Preprocessor Pipeline (`src/features/pipeline.py`)
+
+The preprocessor pipeline is a `ColumnTransformer` that applies different transformations to different types of features:
+
+- **Numeric features** — Imputed with median and scaled with StandardScaler.
+- **Categorical features** — Ordinally encoded with unknown values mapped to -1.
+- **Temporal features** — Cyclically encoded to capture periodic patterns.
+
+### Feature Building (`src/features/build_features.py`)
+
+The feature building script loads the preprocessed data and applies the preprocessor pipeline to transform the features. It also processes the targets into the correct format for training the model.
+
+### Preprocessed Data (`data/preprocessed/`)
+
+The preprocessed data is saved in the `data/preprocessed/` directory as NumPy arrays. The arrays are named `train_features.npy`, `val_features.npy`, and `test_features.npy` for the features, and `train_delivery_days.npy`, `val_delivery_days.npy`, and `test_delivery_days.npy` for the targets.
+
 ## 🚀 Quick Start
 
 ```bash
@@ -189,10 +211,9 @@ uv run python main.py
 ## 🗺 Roadmap
 
 - [x] **Phase 0 — Data Engineering** — DuckDB warehouse, Pydantic contracts, data splits
-- [/] **Phase 1 — EDA & Hypothesis Testing** — Statistical validation of architecture assumptions
-- [ ] **Phase 2 — Feature Engineering** — Haversine distance, temporal features, encoding pipelines
+- [x] **Phase 1 — EDA & Hypothesis Testing** — Statistical validation of architecture assumptions
+- [x] **Phase 2 — Feature Engineering** — Haversine distance, temporal features, encoding pipelines
 - [ ] **Phase 3 — MMoE Model + MLflow** — Multi-gate Mixture-of-Experts in PyTorch, experiment tracking
 - [ ] **Phase 4 — Model Export** — ONNX Runtime optimized inference
 - [ ] **Phase 5 — Serving** — FastAPI REST endpoint
 - [ ] **Phase 6 — CI/CD & UI** — GitHub Actions, Docker, Streamlit dashboard
-- [ ] **Phase 7 — Data Versioning** — DVC integration

@@ -24,3 +24,6 @@ data/
 
 # notbook checkpoints
 .ipynb_checkpoints
+
+# environment variables
+.env
