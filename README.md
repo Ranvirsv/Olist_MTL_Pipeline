@@ -187,25 +187,6 @@ The feature building script loads the preprocessed data and applies the preproce
 
 The preprocessed data is saved in the `data/preprocessed/` directory as NumPy arrays. The arrays are named `train_features.npy`, `val_features.npy`, and `test_features.npy` for the features, and `train_delivery_days.npy`, `val_delivery_days.npy`, and `test_delivery_days.npy` for the targets.
 
-## 🚀 Quick Start
-
-```bash
-# 1. Clone the repo
-git clone <repo-url> && cd Olist_MTL_Pipeline
-
-# 2. Install dependencies with uv
-uv sync
-
-# 3. Set up environment
-#    Create a .env file with PROJECT_ROOT pointing to the project directory
-echo "PROJECT_ROOT=$(pwd)" > .env
-
-# 4. Place raw CSVs in data/raw/
-
-# 5. Run the ETL pipeline
-uv run python main.py
-```
-
 ---
 
 ## 🗺 Roadmap

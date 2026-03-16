@@ -1,0 +1,18 @@
+stages:
+  split_data:
+    cmd: uv run python src/features/splits.py
+    deps:
+      - data/olist.duckdb
+      - src/features/splits.py
+    outs:
+      - data/splits/
+  build_features:
+    cmd: uv run python src/features/build_features.py
+    deps:
+      - data/splits/
+      - src/features/pipeline.py
+      - src/features/cyclic.py
+      - src/features/haversine.py
+      - src/features/build_features.py
+    outs:
+      - data/preprocessed/

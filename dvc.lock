@@ -1,0 +1,49 @@
+schema: '2.0'
+stages:
+  split_data:
+    cmd: uv run python src/features/splits.py
+    deps:
+    - path: data/olist.duckdb
+      hash: md5
+      md5: 59b92909c3a1038c74d2ec3d815959a2
+      size: 55324672
+    - path: src/features/splits.py
+      hash: md5
+      md5: 4c38c019dd08748c8acf63bad79f4f71
+      size: 1873
+    outs:
+    - path: data/splits/
+      hash: md5
+      md5: a5d055e748edd88811f6adf4aca15cc3.dir
+      size: 24109315
+      nfiles: 4
+  build_features:
+    cmd: uv run python src/features/build_features.py
+    deps:
+    - path: data/splits/
+      hash: md5
+      md5: a5d055e748edd88811f6adf4aca15cc3.dir
+      size: 24109315
+      nfiles: 4
+    - path: src/features/build_features.py
+      hash: md5
+      md5: b64d7ea60b8ec23be6f9fb8f92160c29
+      size: 3008
+    - path: src/features/cyclic.py
+      hash: md5
+      md5: 391058816563fb1af2da7a35b05221a1
+      size: 1147
+    - path: src/features/haversine.py
+      hash: md5
+      md5: bd7eba8997f69d10bc303c326e558f20
+      size: 386
+    - path: src/features/pipeline.py
+      hash: md5
+      md5: 8547c8912ef07328ffae16c43fa9014c
+      size: 1121
+    outs:
+    - path: data/preprocessed/
+      hash: md5
+      md5: 0ca75187298b977bea2c50a96b6623dc.dir
+      size: 11779168
+      nfiles: 9
