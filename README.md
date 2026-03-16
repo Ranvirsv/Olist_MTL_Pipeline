@@ -59,31 +59,46 @@ A Jupyter notebook cannot run in production. This project demonstrates the jump 
 
 ```
 Olist_MTL_Pipeline/
-├── main.py                  # Pipeline entry point
-├── pyproject.toml           # uv project config & dependencies
-├── uv.lock                  # Reproducible dependency lock
+├── main.py                           # Pipeline entry point
+├── pyproject.toml                    # uv project config & dependencies
+├── uv.lock                           # Reproducible dependency lock
 │
-├── data/                    # ⚠️ Entire folder is gitignored
-│   ├── raw/                 # 9 raw Olist CSV files
-│   ├── olist.duckdb         # Built DuckDB data warehouse
-│   └── splits/
-│       ├── df_model.parquet # Full modelling-ready dataset
-│       ├── train.parquet    # Training split
-│       ├── val.parquet      # Validation split
-│       └── test.parquet     # Test split
+├── data/                             # ⚠️ Entire folder is gitignored
+│   ├── raw/                          # 9 raw Olist CSV files
+│   ├── olist.duckdb                  # Built DuckDB data warehouse
+│   ├── splits/
+│   │   ├── df_model.parquet          # Full modelling-ready dataset
+│   │   ├── train.parquet             # Training split
+│   │   ├── val.parquet               # Validation split
+│   │   └── test.parquet              # Test split
+│   └── preprocessed/                 # Preprocessed data
+│       ├── df_model.parquet          # Full modelling-ready dataset
+│       ├── train_features.parquet    # Training split features
+│       ├── val_features.parquet      # Validation split features
+│       ├── test_features.parquet     # Test split features
+│       ├── train_review_score.parquet     # Training split review score targets
+│       ├── val_review_score.parquet       # Validation split review score targets
+│       ├── test_review_score.parquet      # Test split review score targets
+│       ├── train_delivery_days.parquet     # Training split delivery days targets
+│       ├── val_delivery_days.parquet       # Validation split delivery days targets
+│       └── test_delivery_days.parquet      # Test split delivery days targets
 │
 ├── sql/
-│   └── build_db.sql         # DuckDB warehouse DDL & analytical view
+│   └── build_db.sql                  # DuckDB warehouse DDL & analytical view
 │
 ├── src/
-│   ├── etl.py               # ETL orchestrator + data validation
-│   ├── schemas.py           # Pydantic data contracts
+│   ├── etl.py                        # ETL orchestrator + data validation
+│   ├── schemas.py                    # Pydantic data contracts
 │   └── features/
-│       └── haversine.py     # Haversine distance feature
+│       ├── haversine.py              # Haversine distance feature
+│       ├── cyclic.py                 # Cyclic features
+│       ├── pipeline.py               # Feature pipeline
+│       ├── build_features.py         # Feature builder
+│       └── splits.py                 # Split data into train, val, test
 │
 └── EDA/
-    ├── plots.py                     # Reusable Pydantic-configured plotting library
-    └── 01_hypothesis_testing.ipynb  # Statistical hypothesis testing notebook
+    ├── plots.py                      # Reusable Pydantic-configured plotting library
+    └── 01_hypothesis_testing.ipynb   # Statistical hypothesis testing notebook
 ```
 
 ---
