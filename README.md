@@ -46,8 +46,8 @@ A Jupyter notebook cannot run in production. This project demonstrates the jump 
 | **Data Contracts**             | `Pydantic` _(Strict schema validation)_                | ✅ Active  |
 | **Statistical Research**       | `scipy.stats` _(Hypothesis testing)_                   | ✅ Active  |
 | **Visualization**              | `matplotlib` + `seaborn` _(Custom Plotter library)_    | ✅ Active  |
-| **Data Versioning**            | `DVC` _(Git for massive datasets)_                     | 🔲 Planned |
-| **Deep Learning**              | `PyTorch` _(Custom MMoE architecture)_                 | 🔲 Planned |
+| **Data Versioning**            | `DVC` _(Git for massive datasets)_                     | ✅ Active  |
+| **Deep Learning**              | `PyTorch` _(Custom MMoE architecture)_                 | ✅ Active  |
 | **Experiment Tracking**        | `MLflow` _(Hyperparameters & loss curves)_             | 🔲 Planned |
 | **Model Export**               | `ONNX Runtime` _(Optimized inference)_                 | 🔲 Planned |
 | **Serving**                    | `FastAPI` _(REST API)_                                 | 🔲 Planned |
@@ -89,6 +89,9 @@ Olist_MTL_Pipeline/
 ├── src/
 │   ├── etl.py                        # ETL orchestrator + data validation
 │   ├── schemas.py                    # Pydantic data contracts
+│   ├── models/
+│   │   ├── dataset.py                # Dataset class for PyTorch
+│   │   └── mmoe.py                   # MMoE model class
 │   └── features/
 │       ├── haversine.py              # Haversine distance feature
 │       ├── cyclic.py                 # Cyclic features
@@ -201,6 +204,18 @@ The feature building script loads the preprocessed data and applies the preproce
 ### Preprocessed Data (`data/preprocessed/`)
 
 The preprocessed data is saved in the `data/preprocessed/` directory as NumPy arrays. The arrays are named `train_features.npy`, `val_features.npy`, and `test_features.npy` for the features, and `train_delivery_days.npy`, `val_delivery_days.npy`, and `test_delivery_days.npy` for the targets.
+
+---
+
+## Phase 3 - MMoE Model + MLflow
+
+### MMoE Model (`src/models/mmoe.py`)
+
+The MMoE model is a neural network that is trained to predict both delivery time and customer satisfaction. It is a multi-task learning model that uses a shared-bottom architecture to share features between the two tasks.
+
+### Dataset Class (`src/models/dataset.py`)
+
+The dataset class is a PyTorch Dataset that is used to load the preprocessed data and targets. It is a custom dataset writen for the Olist preprocessed data used to load the features, task_a targets, and task_b targets.
 
 ---
 
