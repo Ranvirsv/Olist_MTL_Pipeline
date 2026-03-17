@@ -11,6 +11,7 @@ from tqdm import tqdm
 from dataset import OlistDataset
 from mmoe import MMoE
 from MTLLoss import MultiTaskLoss
+from mlflow.models import infer_signature
 
 class Trainer:
     def __init__(self, model, train_loader, val_loader, params, optimizer, mtl_loss, device='cpu', mlflow_exp_name="Olist_MTL"):
@@ -68,7 +69,7 @@ class Trainer:
                 out_delivery, out_satisfaction = self.model(X_batch)
 
                 loss, loss_delivery, loss_satisfaction = self.mtl_loss(out_delivery, out_satisfaction, y_delivery_batch, y_satisfaction_batch)
-                
+
 
                 total_loss_delivery += loss_delivery.item()
                 total_loss_satisfaction += loss_satisfaction.item()
@@ -79,7 +80,7 @@ class Trainer:
             return avg_loss_delivery, avg_loss_satisfaction
 
     def train(self):
-        with mlflow.start_run(run_name=f"MMoE_Exp_{self.params['exp_num']}", nested=True):
+        with mlflow.start_run(run_name=f"MMoE_Exp_{self.params['exp_num']}"):
             logger.info("MLFlow run started. Logging parameters")
             mlflow.log_params(self.params)
 
@@ -98,7 +99,7 @@ class Trainer:
 
                 if current_val_loss[0] < best_val_loss[0] and current_val_loss[1] < best_val_loss[1]:
                     best_val_loss = current_val_loss
-                    mlflow.pytorch.log_model(self.model, "best_mmoe_model", export_model=True)
+                    mlflow.pytorch.log_model(self.model, "best_mmoe_model")
                     logger.info("New best model saved!")
 
                 mlflow.log_metrics({
@@ -145,7 +146,7 @@ def main():
     model = MMoE(input_dim=params['input_dim'], output_dim=params['output_dim'], num_experts=params['num_experts'], hidden_dim=params['hidden_dim'], num_hidden_layers=params['num_hidden_layers'], temperature=params['temperature'])
     model.to(device)
 
-    del_gating_network = nn.Linear(params['input_dim'], params['num_experts']).to(device)
+    del_gating_network = nn.Sequential(nn.Linear(params['input_dim'], params['num_experts']), nn.Softmax(dim=1)).to(device)
     sat_gating_network = nn.Sequential(nn.Linear(params['input_dim'], params['num_experts']), nn.Softmax(dim=1)).to(device)
 
     model.gate_delivery = del_gating_network
@@ -155,12 +156,12 @@ def main():
     optimizer = optim.Adam((list(model.parameters()) + list(mtl_loss.parameters())), lr=params['learning_rate'])
 
     ## Log Model Architecture
-    model_architecture_string = str(model)
-    mlflow.log_text(model_architecture_string, "model_architecture.txt")
-    loss_architecture_string = str(mtl_loss)
-    mlflow.log_text(loss_architecture_string, "loss_architecture.txt")
-    optimizer_architecture_string = str(optimizer)
-    mlflow.log_text(optimizer_architecture_string, "optimizer_architecture.txt")
+    # model_architecture_string = str(model)
+    # mlflow.log_text(model_architecture_string, "model_architecture.txt")
+    # loss_architecture_string = str(mtl_loss)
+    # mlflow.log_text(loss_architecture_string, "loss_architecture.txt")
+    # optimizer_architecture_string = str(optimizer)
+    # mlflow.log_text(optimizer_architecture_string, "optimizer_architecture.txt")
 
     train_dataset = OlistDataset(f"{root_dir}/data/preprocessed/train_features.npy", 
                                 f"{root_dir}/data/preprocessed/train_delivery_days.npy", 

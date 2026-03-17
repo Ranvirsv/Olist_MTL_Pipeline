@@ -17,7 +17,6 @@ data/
 *.csv
 *.duckdb
 *.duckdb.wal
-*.db
 
 # OS Files
 .DS_Store
@@ -28,3 +27,7 @@ data/
 
 # environment variables
 .env
+
+## MLflow
+/mlartifacts
+mlflow.db
