@@ -17,6 +17,7 @@ data/
 *.csv
 *.duckdb
 *.duckdb.wal
+*.db
 
 # OS Files
 .DS_Store

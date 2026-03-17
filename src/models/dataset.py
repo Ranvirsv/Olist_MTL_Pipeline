@@ -14,7 +14,7 @@ class OlistDataset(Dataset):
 
         self.x = torch.tensor(self.x, dtype=torch.float32)
         self.y_delivery = torch.tensor(self.y_delivery, dtype=torch.float32)
-        self.y_statisfaction = torch.tensor(self.y_statisfaction, dtype=torch.long)
+        self.y_statisfaction = torch.tensor(self.y_statisfaction, dtype=torch.float32)
 
         logger.info(f"Data loaded: {self.x.shape}, {self.y_delivery.shape}, {self.y_statisfaction.shape}")
 

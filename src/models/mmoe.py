@@ -13,12 +13,12 @@ class SoftmaxTemperature(nn.Module):
         return torch.softmax(x / self.temperature, dim=self.dim)
 
 class GatingNetwork(nn.Module):
-    def __init__(self, input_dim, num_experts, hidden_dim=64, num_hidden_dim=2, temperature=1.0):
+    def __init__(self, input_dim, num_experts, hidden_dim=64, num_hidden_layers=0, temperature=1.0):
         super().__init__()
         self.input_dim = input_dim
         self.num_experts = num_experts
         self.hidden_dim = hidden_dim
-        self.num_hidden_dim = num_hidden_dim
+        self.num_hidden_layers = num_hidden_layers
         
         self.gate = [
             nn.Linear(self.input_dim, self.hidden_dim), 
@@ -28,7 +28,7 @@ class GatingNetwork(nn.Module):
         ]
 
         hidden_layers = []
-        for _ in range(self.num_hidden_dim):
+        for _ in range(self.num_hidden_layers):
             hidden_layers.extend([nn.Linear(self.hidden_dim, self.hidden_dim), nn.ReLU(), nn.Dropout(0.5)])
             
         self.gate[2:2] = hidden_layers
@@ -40,12 +40,12 @@ class GatingNetwork(nn.Module):
         
 
 class ExpertNetwork(nn.Module):
-    def __init__(self, input_dim, output_dim, hidden_dim=64, num_hidden_dim=2):
+    def __init__(self, input_dim, output_dim, hidden_dim=64, num_hidden_layers=0):
         super().__init__()
         self.input_dim = input_dim
         self.output_dim = output_dim
         self.hidden_dim = hidden_dim
-        self.num_hidden_dim = num_hidden_dim
+        self.num_hidden_layers = num_hidden_layers
         
         self.expert = [
             nn.Linear(self.input_dim, self.hidden_dim), 
@@ -53,7 +53,7 @@ class ExpertNetwork(nn.Module):
         ]
 
         hidden_layers = []
-        for _ in range(self.num_hidden_dim):
+        for _ in range(self.num_hidden_layers):
             hidden_layers.extend([nn.Linear(self.hidden_dim, self.hidden_dim), nn.ReLU(), nn.Dropout(0.5)])
 
         self.expert[2:2] = hidden_layers
@@ -81,19 +81,20 @@ class Tower(nn.Module):
         return tower_out
 
 class MMoE(nn.Module):
-    def __init__(self, input_dim, output_dim, num_experts, hidden_dim=64, num_hidden_dim=2, temperature=1.0):
+    def __init__(self, input_dim, output_dim, num_experts, hidden_dim=64, num_hidden_layers=2, num_gate_hidden_layers=0, temperature=1.0):
         super().__init__()
         self.input_dim = input_dim
         self.output_dim = output_dim
         self.num_experts = num_experts
         self.hidden_dim = hidden_dim
-        self.num_hidden_dim = num_hidden_dim
+        self.num_hidden_layers = num_hidden_layers
+        self.num_gate_hidden_layers = num_gate_hidden_layers
         
-        self.gate_delivery = GatingNetwork(self.input_dim, self.num_experts, self.hidden_dim, self.num_hidden_dim, temperature)
-        self.gate_satisfaction = GatingNetwork(self.input_dim, self.num_experts, self.hidden_dim, self.num_hidden_dim, temperature)
+        self.gate_delivery = GatingNetwork(self.input_dim, self.num_experts, self.hidden_dim, self.num_gate_hidden_layers, temperature)
+        self.gate_satisfaction = GatingNetwork(self.input_dim, self.num_experts, self.hidden_dim, self.num_gate_hidden_layers, temperature)
         
         self.experts = nn.ModuleList([
-                ExpertNetwork(self.input_dim, self.output_dim, self.hidden_dim, self.num_hidden_dim) for _ in range(self.num_experts)
+                ExpertNetwork(self.input_dim, self.output_dim, self.hidden_dim, self.num_hidden_layers) for _ in range(self.num_experts)
             ])
 
         self.delivery_head = Tower(self.output_dim, self.hidden_dim)
@@ -103,8 +104,8 @@ class MMoE(nn.Module):
         expert_weight_delivery = self.gate_delivery(x)
         expert_weight_satisfaction = self.gate_satisfaction(x)
         expert_out = torch.stack([expert(x) for expert in self.experts], dim=1)
-        shared_features_delivery = torch.sum(expert_weight_delivery @ expert_out, dim=1)
-        shared_features_satisfaction = torch.sum(expert_weight_satisfaction @ expert_out, dim=1)
+        shared_features_delivery = torch.sum(expert_weight_delivery.unsqueeze(-1) * expert_out, dim=1)
+        shared_features_satisfaction = torch.sum(expert_weight_satisfaction.unsqueeze(-1) * expert_out, dim=1)
 
         out_delivery = self.delivery_head(shared_features_delivery)
         out_satisfaction = self.satisfaction_head(shared_features_satisfaction)
