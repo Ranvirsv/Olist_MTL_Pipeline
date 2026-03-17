@@ -48,7 +48,7 @@ A Jupyter notebook cannot run in production. This project demonstrates the jump 
 | **Visualization**              | `matplotlib` + `seaborn` _(Custom Plotter library)_    | ✅ Active  |
 | **Data Versioning**            | `DVC` _(Git for massive datasets)_                     | ✅ Active  |
 | **Deep Learning**              | `PyTorch` _(Custom MMoE architecture)_                 | ✅ Active  |
-| **Experiment Tracking**        | `MLflow` _(Hyperparameters & loss curves)_             | 🔲 Planned |
+| **Experiment Tracking**        | `MLflow` _(Hyperparameters & loss curves)_             | ✅ Active  |
 | **Model Export**               | `ONNX Runtime` _(Optimized inference)_                 | 🔲 Planned |
 | **Serving**                    | `FastAPI` _(REST API)_                                 | 🔲 Planned |
 | **CI/CD & UI**                 | `GitHub Actions`, `Docker`, `Streamlit`                | 🔲 Planned |
@@ -91,6 +91,8 @@ Olist_MTL_Pipeline/
 │   ├── schemas.py                    # Pydantic data contracts
 │   ├── models/
 │   │   ├── dataset.py                # Dataset class for PyTorch
+│   │   ├── MTLLoss.py                # Custom loss function for MTL applications
+│   │   ├── train.py                  # Training script
 │   │   └── mmoe.py                   # MMoE model class
 │   └── features/
 │       ├── haversine.py              # Haversine distance feature
@@ -213,9 +215,17 @@ The preprocessed data is saved in the `data/preprocessed/` directory as NumPy ar
 
 The MMoE model is a neural network that is trained to predict both delivery time and customer satisfaction. It is a multi-task learning model that uses a shared-bottom architecture to share features between the two tasks.
 
+### MTLLoss Function (`src/models/MTLLoss.py`)
+
+The MTLLoss function is a custom loss function that is used to train the MMoE model. The function is a weighted sum of the losses, where it learns the weights through traning, in the same traning loop as the model.
+
 ### Dataset Class (`src/models/dataset.py`)
 
 The dataset class is a PyTorch Dataset that is used to load the preprocessed data and targets. It is a custom dataset writen for the Olist preprocessed data used to load the features, task_a targets, and task_b targets.
+
+### Experiment Tracking
+
+The experiment tracking is done using MLflow. Using MLFlow we can track the changes in model, the hyperparameters, and the metrics for traning and testing the model.
 
 ---
 
@@ -224,7 +234,7 @@ The dataset class is a PyTorch Dataset that is used to load the preprocessed dat
 - [x] **Phase 0 — Data Engineering** — DuckDB warehouse, Pydantic contracts, data splits
 - [x] **Phase 1 — EDA & Hypothesis Testing** — Statistical validation of architecture assumptions
 - [x] **Phase 2 — Feature Engineering** — Haversine distance, temporal features, encoding pipelines
-- [ ] **Phase 3 — MMoE Model + MLflow** — Multi-gate Mixture-of-Experts in PyTorch, experiment tracking
+- [x] **Phase 3 — MMoE Model + MLflow** — Multi-gate Mixture-of-Experts in PyTorch, experiment tracking
 - [ ] **Phase 4 — Model Export** — ONNX Runtime optimized inference
 - [ ] **Phase 5 — Serving** — FastAPI REST endpoint
 - [ ] **Phase 6 — CI/CD & UI** — GitHub Actions, Docker, Streamlit dashboard
