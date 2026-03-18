@@ -31,3 +31,4 @@ data/
 ## MLflow
 /mlartifacts
 mlflow.db
+reports/
