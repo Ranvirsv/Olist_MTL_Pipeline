@@ -31,5 +31,5 @@ data/
 ## MLflow
 /mlartifacts
 mlflow.db
-reports/
-[IP_ADDRESS]
+reports/*.csv
+127.0.0.1:5000/
