@@ -81,7 +81,7 @@ SELECT
     pay.max_installments,
 
     -- FEATURES (new: delivery lateness — negative = early, positive = late)
-    date_diff('day', CAST(o.order_estimated_delivery_date AS DATE), CAST(o.order_delivered_customer_date AS DATE)) AS delivery_lateness_days,
+    -- date_diff('day', CAST(o.order_estimated_delivery_date AS DATE), CAST(o.order_delivered_customer_date AS DATE)) AS delivery_lateness_days,
 
     -- FEATURES (new: product detail)
     p.product_description_lenght AS product_description_length,
