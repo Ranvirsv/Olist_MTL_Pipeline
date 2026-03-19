@@ -141,7 +141,7 @@ A single `analytical_base_table` view is built via **5 CTEs** that handle the on
 - **`seller_stats`** — Computes historical order count per seller.
 - **`seller_reviews`** — Computes historical average review score per seller.
 
-The final `SELECT` joins all 8 tables, computes `delivery_days` (date diff between purchase and delivery) and `delivery_lateness_days` (date diff between estimated and actual delivery), and filters to **delivered orders only**.
+The final `SELECT` joins all 8 tables, computes `delivery_days` (date diff between purchase and delivery), and filters to **delivered orders only**.
 
 #### 3. Pydantic Data Contracts (`src/schemas.py`)
 
@@ -179,7 +179,7 @@ Statistical hypothesis testing to validate the core assumptions underpinning the
 - **Mann-Whitney (p ≈ 0, r=0.386):** Low-rated orders take significantly longer to deliver — statistically justifies the MMoE architecture.
 - **Spearman r=0.54 (p ≈ 0):** Strong positive correlation between geo distance and delivery time — validates `geo_distance_km` as a feature.
 - **Kruskal-Wallis (H=795, p ≈ 0):** Higher freight quartiles associate with lower review scores (Q1: 4.31 vs Q4: 3.94) — validates `total_freight_value` as a satisfaction feature.
-- **Chi-squared (p ≈ 0):** Negative review rate nearly doubles for late orders (14.8% → 27.9%) — confirms task correlation and motivates `delivery_lateness_days` as the key satisfaction feature.
+- **Chi-squared (p ≈ 0):** Negative review rate nearly doubles for late orders (14.8% → 27.9%) — confirms the intrinsic link between delivery performance and customer satisfaction.
 
 ---
 
@@ -213,7 +213,7 @@ The feature building script loads the split Parquet data and applies the preproc
 
 ### Preprocessed Data (`data/preprocessed/`)
 
-The preprocessed data is saved in the `data/preprocessed/` directory as NumPy arrays. The final feature matrix has **21 columns**: 12 numeric + 3 ordinal categorical + 6 cyclic temporal. Arrays are saved as `train_features.npy`, `val_features.npy`, and `test_features.npy` for features, with corresponding target arrays for each task.
+The preprocessed data is saved in the `data/preprocessed/` directory as NumPy arrays. The final feature matrix has **20 columns**: 11 numeric + 3 ordinal categorical + 6 cyclic temporal. Arrays are saved as `train_features.npy`, `val_features.npy`, and `test_features.npy` for features, with corresponding target arrays for each task.
 
 ---
 
@@ -238,24 +238,24 @@ A custom PyTorch `Dataset` that loads the preprocessed `.npy` arrays for feature
 
 ### Training Infrastructure (`src/models/train.py`)
 
-| Hyperparameter      | Value                     |
-| ------------------- | ------------------------- |
-| `input_dim`         | 21                        |
-| `num_experts`       | 3                         |
-| `hidden_dim`        | 64                        |
-| `num_hidden_layers` | 1                         |
-| `num_epochs`        | 10                        |
-| `batch_size`        | 32                        |
-| `learning_rate`     | 0.001                     |
-| `optimizer`         | AdamW (weight_decay=0.01) |
-| `temperature`       | 0.7 (gating softmax)      |
-| `sampler`           | WeightedRandomSampler     |
+| Hyperparameter       | Value                                       |
+| -------------------- | ------------------------------------------- |
+| `input_dim`          | 20                                          |
+| `num_experts`        | 5                                           |
+| `hidden_dim`         | 64                                          |
+| `num_hidden_layers`  | 1                                           |
+| `num_epochs`         | 10                                          |
+| `batch_size`         | 32                                          |
+| `learning_rate`      | 0.001 (model), 0.01 (loss weights)          |
+| `optimizer`          | Adam (separate param groups)                |
+| `temperature`        | 0.3 (gating softmax)                        |
+| `sampler`            | WeightedRandomSampler                       |
 
-`WeightedRandomSampler` is used to address the 3:1 class imbalance in the satisfaction task during training, oversampling the minority (negative review) class without artificially inflating the loss.
+`WeightedRandomSampler` is used to address the ~5:1 class imbalance in the satisfaction task during training, oversampling the minority (negative review) class without artificially inflating the loss.
 
 ### Experiment Tracking
 
-**20 experiments** were tracked end-to-end via MLflow, logging:
+**37 experiments** were tracked end-to-end via MLflow, logging:
 
 - All hyperparameters per run
 - Per-epoch train & validation losses for both tasks
@@ -266,7 +266,7 @@ A custom PyTorch `Dataset` that loads the preprocessed `.npy` arrays for feature
 
 ### 🏆 Best Model — Run 12
 
-After 20 experiments, **Run 12** achieved the best balanced accuracy on the satisfaction task while maintaining the strongest delivery regression results.
+After 37 experiments, **Run 12** achieved the best balanced accuracy on the satisfaction task while maintaining strong delivery regression results.
 
 #### Final Test Metrics
 
@@ -306,12 +306,14 @@ Delivery loss converges steadily throughout training. Satisfaction loss plateaus
 
 | Run    | Delivery MAE | Delivery RMSE | Balanced Acc |    F1     |
 | ------ | :----------: | :-----------: | :----------: | :-------: |
-| 7      |     4.72     |     5.67      |    62.1%     |   83.7%   |
-| 11     |     4.24     |     5.20      |    61.8%     |   83.6%   |
 | **12** |   **4.24**   |   **5.26**    |  **62.5%**   | **85.9%** |
-| 13     |     4.32     |     5.31      |    62.1%     |   86.3%   |
+| 19     |     3.36     |     4.65      |    57.5%     |   86.8%   |
+| 20     |     3.74     |     4.80      |    57.7%     |   87.0%   |
+| 35     |     3.48     |     4.59      |    59.7%     |   78.8%   |
+| 36     |     4.18     |     5.08      |    61.1%     |   79.4%   |
+| 37     |     3.79     |     4.81      |    60.6%     |   79.4%   |
 
-Run 12 is the best model — it achieves the highest balanced accuracy (the primary metric for the imbalanced satisfaction task) while matching Run 11's delivery MAE.
+Later runs (19–20) improved delivery MAE significantly (~3.4–3.7 days) but at the cost of satisfaction balanced accuracy (~57–58%). Runs 35–37 explored trading overall accuracy for better minority-class discrimination (TN rates up to 49.9%), pushing balanced accuracy back toward ~61%. Run 12 remains the best model by balanced accuracy — the primary metric for the imbalanced satisfaction task.
 
 ---
 
@@ -325,11 +327,12 @@ A `SHAPExplainer` class wraps the frozen MMoE model and uses **KernelSHAP** to c
 
 **Key findings:**
 
-- **`delivery_lateness_days`** is the dominant driver — high lateness (pink) pushes delivery time predictions strongly positive (up to +20 SHAP units). This is expected: lateness is directly derived from actual delivery time.
-- **`geo_distance_km`** is the second strongest feature. High distance → significantly longer delivery, validating the Haversine engineering step.
-- **`day_of_week_cos/sin`** rank 3rd and 5th — the day an order is placed meaningfully affects delivery time, likely reflecting warehouse processing schedules and weekend cutoffs.
-- **`total_freight_value`** has moderate impact — high freight values push delivery predictions up, correlating with remote or heavy shipments.
-- Features below `total_freight_value` (`seller_avg_review`, `month_sin/cos`, `product_category_name`, etc.) have minimal individual impact on delivery predictions.
+- **`geo_distance_km`** is the dominant driver — high distance (pink) pushes delivery time predictions strongly positive (up to +10 SHAP units), validating the Haversine engineering step as the most valuable feature.
+- **`day_of_week_sin`** and **`hour_cos`** rank 2nd and 3rd — the day and hour an order is placed meaningfully affects delivery time, likely reflecting warehouse processing schedules, weekend cutoffs, and end-of-day shipping deadlines.
+- **`seller_order_count`** has high-magnitude outliers — very experienced sellers (high order counts) occasionally produce large positive SHAP values, suggesting high-volume sellers may be in remote logistics hubs.
+- **`total_freight_value`** has moderate bidirectional impact — high freight (pink) pushes delivery predictions up, correlating with heavier or more remote shipments.
+- **`seller_state`** and **`product_volume_cm3`** contribute moderately — geographic origin of the seller and package size both influence delivery logistics.
+- Features below the top 7 (`month_sin`, `seller_avg_review`, `product_category_name`, etc.) have minimal individual impact on delivery predictions.
 
 #### Customer Satisfaction — SHAP Summary
 
@@ -337,14 +340,15 @@ A `SHAPExplainer` class wraps the frozen MMoE model and uses **KernelSHAP** to c
 
 **Key findings:**
 
-- **`seller_avg_review`** is the single most impactful feature for satisfaction. Low seller reputation (blue) strongly pushes predictions toward dissatisfied (SHAP values down to -0.75), while high reputation (pink) pushes toward satisfied (+0.5). A seller's track record is the strongest proxy for the quality of service a customer will receive.
-- **`delivery_lateness_days`** is the second strongest driver. Late deliveries (high values, pink) push predictions toward dissatisfied, while early deliveries (blue) push toward satisfied — confirming the central hypothesis of the project.
-- **`product_category_name`** ranks third — certain product categories systematically generate more complaints, likely due to expectation mismatches in product descriptions.
-- **`num_items`** is fourth — multi-item orders (high values, pink) push predictions toward dissatisfied, likely because more items increase the chance of at least one issue.
-- **`geo_distance_km`** has surprisingly low impact on satisfaction (ranked ~12th), despite being the #2 delivery driver — suggesting customers care about lateness relative to the estimate, not absolute distance.
-- **`total_payment_value`**, **`product_weight_g`**, and temporal features have minimal impact on satisfaction predictions.
+- **`seller_order_count`** is the single most impactful feature for satisfaction — high-volume sellers (pink) push predictions strongly positive (up to +10 SHAP units), while low-volume sellers (blue) push toward dissatisfied. Seller experience is the strongest proxy for the quality of service a customer will receive.
+- **`hour_cos`** and **`day_of_week_sin`** rank 2nd and 3rd — temporal purchase patterns have significant predictive power, possibly capturing operational efficiency differences (orders placed during business hours vs. off-hours/weekends).
+- **`product_volume_cm3`** ranks 4th — larger products push predictions in both directions with high variance, likely reflecting category-dependent satisfaction patterns (large items may have higher damage/return rates, but also higher engagement when they arrive well).
+- **`seller_avg_review`** ranks 5th — high seller reputation (pink) pushes toward satisfied, confirming that historical seller quality predicts future customer sentiment.
+- **`geo_distance_km`** has moderate impact (6th) — long-distance orders slightly push toward dissatisfied, though less impactful than for delivery predictions.
+- **`total_freight_value`**, **`num_items`**, **`product_category_name`**, and **`max_installments`** have minor contributions — most of the satisfaction signal is captured by seller characteristics and temporal features.
+- **`total_payment_value`**, **`product_photos_qty`**, and **`product_description_length`** rank at the bottom with near-zero SHAP impact.
 
-> The SHAP analysis reveals an important architectural insight: the two tasks share some features (`delivery_lateness_days`, `total_freight_value`) but prioritize them very differently. Satisfaction is dominated by seller reputation — a feature with negligible delivery impact — while delivery is dominated by geography and lateness. This divergence is precisely what MMoE's task-specific gating is designed to handle, allowing shared experts to learn common representations while the gates route relevant signals to each task head.
+> The SHAP analysis reveals an important architectural insight: the two tasks share features (`geo_distance_km`, `seller_order_count`, temporal features) but prioritize them very differently. Delivery is dominated by geography and logistics features, while satisfaction is dominated by seller reputation and experience. This divergence is precisely what MMoE's task-specific gating is designed to handle, allowing shared experts to learn common representations while the gates route relevant signals to each task head.
 
 ---
 
@@ -353,7 +357,7 @@ A `SHAPExplainer` class wraps the frozen MMoE model and uses **KernelSHAP** to c
 - [x] **Phase 0 — Data Engineering** — DuckDB warehouse, Pydantic contracts, data splits
 - [x] **Phase 1 — EDA & Hypothesis Testing** — Statistical validation of architecture assumptions
 - [x] **Phase 2 — Feature Engineering** — Haversine distance, temporal features, encoding pipelines
-- [x] **Phase 3 — MMoE Model + MLflow** — Multi-gate Mixture-of-Experts in PyTorch, 20-run experiment tracking, SHAP explainability
+- [x] **Phase 3 — MMoE Model + MLflow** — Multi-gate Mixture-of-Experts in PyTorch, 37-run experiment tracking, SHAP explainability
 - [ ] **Phase 4 — Model Export** — ONNX Runtime optimized inference
 - [ ] **Phase 5 — Serving** — FastAPI REST endpoint
 - [ ] **Phase 6 — CI/CD & UI** — GitHub Actions, Docker, Streamlit dashboard
