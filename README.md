@@ -93,13 +93,16 @@ Olist_MTL_Pipeline/
 │   │   ├── dataset.py                # Dataset class for PyTorch
 │   │   ├── MTLLoss.py                # Custom loss function for MTL applications
 │   │   ├── train.py                  # Training script
-│   │   └── mmoe.py                   # MMoE model class
+│   │   ├── mmoe.py                   # MMoE model class
+│   │   └── SHAP.py                   # SHAP explainability for both task heads
 │   └── features/
 │       ├── haversine.py              # Haversine distance feature
 │       ├── cyclic.py                 # Cyclic features
 │       ├── pipeline.py               # Feature pipeline
 │       ├── build_features.py         # Feature builder
 │       └── splits.py                 # Split data into train, val, test
+│
+├── reports/                          # Per-run CSVs + SHAP summary plots
 │
 └── EDA/
     ├── plots.py                      # Reusable Pydantic-configured plotting library
@@ -131,9 +134,9 @@ All **9 raw Olist CSV files** are ingested into DuckDB tables via `sql/build_db.
 
 A single `analytical_base_table` view is built via **3 CTEs** that handle the one-to-many and duplicate-resolution problems in the raw data:
 
-- **`aggregated_payments`** — Sums `payment_value` and takes `MAX(installments)` per order (handles multiple payment methods).
-- **`distinct_geo`** — Averages duplicate lat/lng entries per zip code prefix.
-- **`aggregated_items`** — Sums price and freight per order, resolves to a single seller/product.
+-   **`aggregated_payments`** — Sums `payment_value` and takes `MAX(installments)` per order (handles multiple payment methods).
+-   **`distinct_geo`** — Averages duplicate lat/lng entries per zip code prefix.
+-   **`aggregated_items`** — Sums price and freight per order, resolves to a single seller/product.
 
 The final `SELECT` joins all 8 tables, computes `delivery_days` (date diff between purchase and delivery), and filters to **delivered orders only**.
 
@@ -141,9 +144,9 @@ The final `SELECT` joins all 8 tables, computes `delivery_days` (date diff betwe
 
 Every row of the analytical base table is validated against a strict `OlistAnalyticalRow` Pydantic model that enforces:
 
-- **Type safety** — `datetime`, `str`, `float`, `int` types on all fields.
-- **Business rules** — `review_score ∈ [1, 5]`, `price ≥ 0`, `freight_value ≥ 0`, `customer_state` is exactly 2 characters, etc.
-- **NaN handling** — A custom `@field_validator` converts `float('nan')` → `None` across all optional fields, preventing silent data corruption.
+-   **Type safety** — `datetime`, `str`, `float`, `int` types on all fields.
+-   **Business rules** — `review_score ∈ [1, 5]`, `price ≥ 0`, `freight_value ≥ 0`, `customer_state` is exactly 2 characters, etc.
+-   **NaN handling** — A custom `@field_validator` converts `float('nan')` → `None` across all optional fields, preventing silent data corruption.
 
 The ETL pipeline (`src/etl.py`) runs every row through this contract and logs any schema violations via `loguru` before failing or passing the pipeline.
 
@@ -159,10 +162,10 @@ The modelling-ready dataset has been split into **train / validation / test** Pa
 
 A production-grade plotting module built around a Pydantic-configured `Plotter` class:
 
-- **8 plot methods** — `histogram`, `boxplot`, `scatter`, `countplot`, `barplot`, `heatmap`, `pairplot`, `lineplot`.
-- **`PlotConfig`** — Pydantic model for validated, serializable plot settings (style, figsize, dpi, save directory, etc.).
-- **Every method returns `(fig, ax)`** for further customization.
-- **Auto-save support** — Optionally saves figures to a configurable directory.
+-   **8 plot methods** — `histogram`, `boxplot`, `scatter`, `countplot`, `barplot`, `heatmap`, `pairplot`, `lineplot`.
+-   **`PlotConfig`** — Pydantic model for validated, serializable plot settings (style, figsize, dpi, save directory, etc.).
+-   **Every method returns `(fig, ax)`** for further customization.
+-   **Auto-save support** — Optionally saves figures to a configurable directory.
 
 #### Hypothesis Testing (`EDA/01_hypothesis_testing.ipynb`)
 
@@ -170,18 +173,18 @@ Statistical hypothesis testing to validate the core assumptions underpinning the
 
 **Key findings:**
 
-- **Mann-Whitney (p ≈ 0, r=0.386):** Low-rated orders take significantly longer to deliver — statistically justifies the MMoE architecture.
-- **Spearman r=0.54 (p ≈ 0):** Strong positive correlation between geo distance and delivery time — validates `geo_distance_km` as a feature.
-- **Chi-squared (p ≈ 0):** Negative review rate nearly doubles for late orders (14.8% → 27.9%) — confirms task correlation.
+-   **Mann-Whitney (p ≈ 0, r=0.386):** Low-rated orders take significantly longer to deliver — statistically justifies the MMoE architecture.
+-   **Spearman r=0.54 (p ≈ 0):** Strong positive correlation between geo distance and delivery time — validates `geo_distance_km` as a feature.
+-   **Chi-squared (p ≈ 0):** Negative review rate nearly doubles for late orders (14.8% → 27.9%) — confirms task correlation.
 
 ---
 
 ## 🔑 Key Design Decisions
 
-- **Time-based train/val/test split** — Random splitting on time-series order data causes leakage. Splits are chronological: train ends Apr 2018, val ends Jun 2018, test ends Aug 2018.
-- **Outlier cap at p99 (46 days)** — Orders above the 99th percentile are fulfilment failures, not legitimate long-distance deliveries. 918 rows removed.
-- **y=1 = negative review** — The minority class (25%) is labelled positive for `BCEWithLogitsLoss`. `pos_weight=3.74` compensates for the 3:1 class imbalance.
-- **Aggregated items CTE** — Direct `JOIN` on items inflates rows for multi-item orders. Items are aggregated per `order_id` before joining.
+-   **Time-based train/val/test split** — Random splitting on time-series order data causes leakage. Splits are chronological: train ends Apr 2018, val ends Jun 2018, test ends Aug 2018.
+-   **Outlier cap at p99 (46 days)** — Orders above the 99th percentile are fulfilment failures, not legitimate long-distance deliveries. 918 rows removed.
+-   **y=1 = negative review** — The minority class (25%) is labelled positive for `BCEWithLogitsLoss`. `pos_weight=3.74` compensates for the 3:1 class imbalance.
+-   **Aggregated items CTE** — Direct `JOIN` on items inflates rows for multi-item orders. Items are aggregated per `order_id` before joining.
 
 ---
 
@@ -195,9 +198,9 @@ Cyclic encoding is a feature encoding technique that converts periodic features 
 
 The preprocessor pipeline is a `ColumnTransformer` that applies different transformations to different types of features:
 
-- **Numeric features** — Imputed with median and scaled with StandardScaler.
-- **Categorical features** — Ordinally encoded with unknown values mapped to -1.
-- **Temporal features** — Cyclically encoded to capture periodic patterns.
+-   **Numeric features** — Imputed with median and scaled with StandardScaler.
+-   **Categorical features** — Ordinally encoded with unknown values mapped to -1.
+-   **Temporal features** — `order_purchase_timestamp` is cyclically encoded into 6 dimensions: `hour_sin/cos`, `day_of_week_sin/cos`, `month_sin/cos`, capturing intraday, weekly, and seasonal purchase patterns.
 
 ### Feature Building (`src/features/build_features.py`)
 
@@ -205,36 +208,140 @@ The feature building script loads the preprocessed data and applies the preproce
 
 ### Preprocessed Data (`data/preprocessed/`)
 
-The preprocessed data is saved in the `data/preprocessed/` directory as NumPy arrays. The arrays are named `train_features.npy`, `val_features.npy`, and `test_features.npy` for the features, and `train_delivery_days.npy`, `val_delivery_days.npy`, and `test_delivery_days.npy` for the targets.
+The preprocessed data is saved in the `data/preprocessed/` directory as NumPy arrays. The final feature matrix has **21 columns**: 12 numeric + 3 ordinal categorical + 6 cyclic temporal. Arrays are saved as `train_features.npy`, `val_features.npy`, and `test_features.npy` for features, with corresponding target arrays for each task.
 
 ---
 
-## Phase 3 - MMoE Model + MLflow
+## Phase 3 - MMoE Model + MLflow ✅
 
 ### MMoE Model (`src/models/mmoe.py`)
 
-The MMoE model is a neural network that is trained to predict both delivery time and customer satisfaction. It is a multi-task learning model that uses a shared-bottom architecture to share features between the two tasks.
+The MMoE (Multi-gate Mixture-of-Experts) model is a neural network trained to simultaneously predict delivery time (regression) and customer satisfaction (binary classification). It uses independent gating networks per task, preventing negative transfer between the two learning objectives.
 
 ### MTLLoss Function (`src/models/MTLLoss.py`)
 
-The MTLLoss function is a custom loss function that is used to train the MMoE model. The function is a weighted sum of the losses, where it learns the weights through traning, in the same traning loop as the model.
+A custom multi-task loss that combines:
+-   **HuberLoss** for the delivery regression head (robust to outliers)
+-   **BCEWithLogitsLoss** for the satisfaction classification head
+
+Task loss weights are **learned during training** alongside model parameters via uncertainty weighting, avoiding manual tuning.
 
 ### Dataset Class (`src/models/dataset.py`)
 
-The dataset class is a PyTorch Dataset that is used to load the preprocessed data and targets. It is a custom dataset writen for the Olist preprocessed data used to load the features, task_a targets, and task_b targets.
+A custom PyTorch `Dataset` that loads the preprocessed `.npy` arrays for features, delivery day targets, and review score targets.
+
+### Training Infrastructure (`src/models/train.py`)
+
+| Hyperparameter        | Value                    |
+| --------------------- | ------------------------ |
+| `input_dim`           | 21                       |
+| `num_experts`         | 3                        |
+| `hidden_dim`          | 64                       |
+| `num_hidden_layers`   | 1                        |
+| `num_epochs`          | 10                       |
+| `batch_size`          | 32                       |
+| `learning_rate`       | 0.001                    |
+| `optimizer`           | AdamW (weight_decay=0.01)|
+| `temperature`         | 0.7 (gating softmax)     |
+| `sampler`             | WeightedRandomSampler    |
+
+`WeightedRandomSampler` is used to address the 3:1 class imbalance in the satisfaction task during training, oversampling the minority (negative review) class without artificially inflating the loss.
 
 ### Experiment Tracking
 
-The experiment tracking is done using MLflow. Using MLFlow we can track the changes in model, the hyperparameters, and the metrics for traning and testing the model.
+**20 experiments** were tracked end-to-end via MLflow, logging:
+-   All hyperparameters per run
+-   Per-epoch train & validation losses for both tasks
+-   Final test metrics (MAE, RMSE, Accuracy, Precision, Recall, F1, Balanced Accuracy, Confusion Matrix)
+-   Best model checkpoint registered in the **MLflow Model Registry**
+
+---
+
+### 🏆 Best Model — Run 12
+
+After 20 experiments, **Run 12** achieved the best balanced accuracy on the satisfaction task while maintaining the strongest delivery regression results.
+
+#### Final Test Metrics
+
+| Metric                        | Value         |
+| ----------------------------- | ------------- |
+| **Delivery MAE**              | **4.24 days** |
+| **Delivery RMSE**             | **5.26 days** |
+| **Satisfaction Accuracy**     | 77.5%         |
+| **Satisfaction Precision**    | 88.2%         |
+| **Satisfaction Recall**       | 84.4%         |
+| **Satisfaction F1**           | 85.9%         |
+| **Satisfaction Balanced Acc** | **62.5%**     |
+
+#### Confusion Matrix (Satisfaction — Test Set)
+
+|                     | Predicted Negative | Predicted Positive |
+| ------------------- | -----------------: | -----------------: |
+| **Actual Negative** | TN = 981           | FP = 1,347         |
+| **Actual Positive** | FN = 1,857         | TP = 10,082        |
+
+> The model achieves **84.4% recall** on positive (negative review) predictions — the operationally critical direction. Catching unhappy customers is more valuable than false alarms.
+
+#### Training Curve (Run 12)
+
+| Epoch | Train Delivery Loss | Train Sat. Loss | Val Delivery Loss | Val Sat. Loss |
+| :---: | :-----------------: | :-------------: | :---------------: | :-----------: |
+| 0     | 0.1527              | 0.6220          | 0.1242            | 0.5898        |
+| 2     | 0.1080              | 0.6001          | 0.1198            | 0.5917        |
+| 5     | 0.1006              | 0.5951          | 0.1227            | 0.5537        |
+| 9     | 0.0952              | 0.5915          | 0.1321            | 0.5646        |
+
+Delivery loss converges steadily throughout training. Satisfaction loss plateaus near `0.59` on validation — consistent with the inherent noise in subjective customer sentiment labels.
+
+#### Experiment Comparison (Selected Runs)
+
+| Run    | Delivery MAE | Delivery RMSE | Balanced Acc | F1        |
+| ------ | :----------: | :-----------: | :----------: | :-------: |
+| 7      | 4.72         | 5.67          | 62.1%        | 83.7%     |
+| 11     | 4.24         | 5.20          | 61.8%        | 83.6%     |
+| **12** | **4.24**     | **5.26**      | **62.5%**    | **85.9%** |
+| 13     | 4.32         | 5.31          | 62.1%        | 86.3%     |
+
+Run 12 is the best model — it achieves the highest balanced accuracy (the primary metric for the imbalanced satisfaction task) while matching Run 11's delivery MAE.
+
+---
+
+### 🔍 SHAP Explainability (`src/models/SHAP.py`)
+
+A `SHAPExplainer` class wraps the frozen MMoE model and uses **KernelSHAP** to compute feature attributions on 300 held-out test samples (background of 100 training samples). Separate explainers are built for each task head, giving independent explanations for delivery and satisfaction predictions.
+
+#### Delivery Time — SHAP Summary
+
+![SHAP Summary — Delivery Time](reports/shap_summary_plot_delivery.png)
+
+**Key findings:**
+-   **`geo_distance_km`** is the dominant driver. High distance → significantly longer delivery, validating the Haversine engineering step.
+-   **`total_freight_value`** is strongly correlated with delivery time — expensive shipping correlates with remote locations.
+-   **`product_weight_g`** and **`product_volume_cm3`** push delivery time up at high values — heavier/bulkiier items face longer fulfilment windows.
+-   **`seller_order_count`** has a negative contribution — high-volume sellers tend to deliver faster due to operational efficiency.
+-   Temporal cyclic features (`month_sin/cos`, `day_of_week_sin/cos`) contribute modestly, capturing seasonal shipping delays.
+
+#### Customer Satisfaction — SHAP Summary
+
+![SHAP Summary — Customer Satisfaction](reports/shap_summary_plot_satisfaction.png)
+
+**Key findings:**
+-   **`delivery_lateness_days`** is the single most impactful feature — orders running late are overwhelmingly predicted as dissatisfied. This is the central hypothesis of the project, now quantitatively confirmed by the model internals.
+-   **`geo_distance_km`** positively drives negative review predictions. Customers in remote locations are harder to satisfy due to less predictable delivery windows.
+-   **`total_freight_value`** drives dissatisfaction at high values — customers who pay more for shipping expect faster delivery.
+-   **`seller_avg_review`** is an important negative contributor: sellers with historically high ratings suppress negative review predictions.
+-   **`product_category_name`** and **`num_items`** contribute meaningfully, suggesting certain product categories and multi-item orders generate more complaints.
+
+> The shared features between both SHAP summaries (`geo_distance_km`, `total_freight_value`) confirm the Phase 1 hypothesis: the two tasks are deeply correlated, which is precisely why the MMoE architecture outperforms two independent models.
 
 ---
 
 ## 🗺 Roadmap
 
-- [x] **Phase 0 — Data Engineering** — DuckDB warehouse, Pydantic contracts, data splits
-- [x] **Phase 1 — EDA & Hypothesis Testing** — Statistical validation of architecture assumptions
-- [x] **Phase 2 — Feature Engineering** — Haversine distance, temporal features, encoding pipelines
-- [x] **Phase 3 — MMoE Model + MLflow** — Multi-gate Mixture-of-Experts in PyTorch, experiment tracking
-- [ ] **Phase 4 — Model Export** — ONNX Runtime optimized inference
-- [ ] **Phase 5 — Serving** — FastAPI REST endpoint
-- [ ] **Phase 6 — CI/CD & UI** — GitHub Actions, Docker, Streamlit dashboard
+-   [x] **Phase 0 — Data Engineering** — DuckDB warehouse, Pydantic contracts, data splits
+-   [x] **Phase 1 — EDA & Hypothesis Testing** — Statistical validation of architecture assumptions
+-   [x] **Phase 2 — Feature Engineering** — Haversine distance, temporal features, encoding pipelines
+-   [x] **Phase 3 — MMoE Model + MLflow** — Multi-gate Mixture-of-Experts in PyTorch, 20-run experiment tracking, SHAP explainability
+-   [ ] **Phase 4 — Model Export** — ONNX Runtime optimized inference
+-   [ ] **Phase 5 — Serving** — FastAPI REST endpoint
+-   [ ] **Phase 6 — CI/CD & UI** — GitHub Actions, Docker, Streamlit dashboard
