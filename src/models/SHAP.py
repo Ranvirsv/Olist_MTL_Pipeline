@@ -90,7 +90,7 @@ def main():
     
     logger.info("Loading Model")
     model_name = "MMoE Best Bal_Acc"
-    model_version = 1
+    model_version = 2
     model = mlflow.pytorch.load_model(f"models:/{model_name}/{model_version}")
     model.to(device)
     model.eval()

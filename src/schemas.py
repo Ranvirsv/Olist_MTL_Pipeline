@@ -25,7 +25,7 @@ class OlistAnalyticalRow(BaseModel):
     max_installments: Optional[int] = Field(None, ge=0)
 
     # Features (new: delivery lateness — negative = early, positive = late)
-    delivery_lateness_days: Optional[float] = None
+    # delivery_lateness_days: Optional[float] = None
 
     # Features (new: product detail)
     product_description_length: Optional[float] = Field(None, ge=0.0)
@@ -52,7 +52,7 @@ class OlistAnalyticalRow(BaseModel):
         'seller_lat', 'seller_lng', 'seller_state', 'review_comment_message',
         'product_category_name', 'order_purchase_timestamp', 'customer_city',
         'customer_state', 'order_id', 'customer_unique_id',
-        'delivery_lateness_days', 'product_description_length', 'product_photos_qty',
+        'product_description_length', 'product_photos_qty',
         'product_volume_cm3', 'num_items', 'seller_order_count', 'seller_avg_review',
         mode='before'
     )

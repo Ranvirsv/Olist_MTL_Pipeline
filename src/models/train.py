@@ -151,6 +151,14 @@ class Trainer:
             best_val_loss = [float('inf'), float('inf')]
 
             for epoch in range(self.params['num_epochs']):
+                if epoch == 5:
+                    for param in self.model.delivery_head.parameters():
+                        param.requires_grad = False
+                    for param in self.model.gate_delivery.parameters():
+                        param.requires_grad = False
+                    for param in self.mtl_loss.parameters():
+                        param.requires_grad = False
+                
                 logger.info(f"Epoch {epoch+1}/{self.params['num_epochs']}")
                 avg_train_del_loss, avg_train_sat_loss = self._train_one_epoch()
                 avg_val_del_loss, avg_val_sat_loss = self._validate()
@@ -161,7 +169,7 @@ class Trainer:
 
                 current_val_loss = [avg_val_del_loss, avg_val_sat_loss]
 
-                if current_val_loss[0] <= best_val_loss[0] and current_val_loss[1] <= best_val_loss[1]:
+                if current_val_loss[0] + current_val_loss[1] <= best_val_loss[0] + best_val_loss[1]:
                     best_val_loss = current_val_loss
                     mlflow.pytorch.log_model(self.model, "best_mmoe_model")
                     logger.info("New best model saved!")
@@ -217,14 +225,15 @@ def main():
     params = {
         'num_epochs': 10,
         'batch_size': 32,
-        'input_dim': 21,
+        'input_dim': 20,
         'output_dim': 1,
         'learning_rate': 0.001,
-        'num_experts': 3,
+        'loss_learning_rate': 0.01,
+        'num_experts': 5,
         'hidden_dim': 64,
         'num_hidden_layers': 1,
         'num_gate_hidden_layers': 0,
-        'temperature': 0.7, 
+        'temperature': 0.3, 
         'exp_num': experiment_num,
         'train_report_path': train_report_path,
         'test_report_path': test_report_path,
@@ -240,8 +249,11 @@ def main():
     model = MMoE(input_dim=params['input_dim'], output_dim=params['output_dim'], num_experts=params['num_experts'], hidden_dim=params['hidden_dim'], num_hidden_layers=params['num_hidden_layers'], temperature=params['temperature'])
     model.to(device)
 
-    mtl_loss = MultiTaskLoss(nn.HuberLoss(), nn.BCEWithLogitsLoss(), torch.tensor([True, False]))
-    optimizer = optim.AdamW((list(model.parameters()) + list(mtl_loss.parameters())), lr=params['learning_rate'], weight_decay=0.01)
+    mtl_loss = MultiTaskLoss(nn.HuberLoss(), nn.BCEWithLogitsLoss(pos_weight=torch.tensor([1/1.25]).to(device)), torch.tensor([True, False]))
+    optimizer = optim.Adam([
+        {'params': model.parameters(), 'lr': params['learning_rate']},
+        {'params': mtl_loss.parameters(), 'lr': params['loss_learning_rate']}
+    ])
 
     ## _____________________________________________________________________
     ##                 DATASET AND DATALOADER
