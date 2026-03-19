@@ -30,29 +30,48 @@ distinct_geo AS (
 ),
 -- CTE 3: Aggrigated items
 aggregated_items AS (
-    SELECT 
+    SELECT
         order_id,
         SUM(price) AS total_price,
         SUM(freight_value) AS total_freight_value,
+        COUNT(*) AS num_items,
         MIN(seller_id)     AS seller_id,
         MIN(product_id)    AS product_id
     FROM items
     GROUP BY order_id
+),
+-- CTE 4: Seller historical volume (total orders fulfilled)
+seller_stats AS (
+    SELECT
+        s.seller_id,
+        COUNT(DISTINCT i.order_id) AS seller_order_count,
+    FROM items i
+    JOIN sellers s ON i.seller_id = s.seller_id
+    GROUP BY s.seller_id
+),
+-- CTE 5: Seller historical avg review score
+seller_reviews AS (
+    SELECT
+        i.seller_id,
+        AVG(r.review_score) AS seller_avg_review
+    FROM items i
+    JOIN reviews r ON i.order_id = r.order_id
+    GROUP BY i.seller_id
 )
 
-SELECT 
+SELECT
     DISTINCT(o.order_id),
     c.customer_unique_id,
     c.customer_city,
     c.customer_state,
     o.order_purchase_timestamp,
-    
+
     -- TARGET A & B
     date_diff('day', CAST(o.order_purchase_timestamp AS DATE), CAST(o.order_delivered_customer_date AS DATE)) AS delivery_days,
     r.review_score,
     r.review_comment_message,
 
-    -- FEATURES
+    -- FEATURES (original)
     i.total_price,
     i.total_freight_value,
     p.product_weight_g,
@@ -60,7 +79,22 @@ SELECT
     s.seller_state,
     pay.total_payment_value,
     pay.max_installments,
-    
+
+    -- FEATURES (new: delivery lateness — negative = early, positive = late)
+    date_diff('day', CAST(o.order_estimated_delivery_date AS DATE), CAST(o.order_delivered_customer_date AS DATE)) AS delivery_lateness_days,
+
+    -- FEATURES (new: product detail)
+    p.product_description_lenght AS product_description_length,
+    p.product_photos_qty,
+    COALESCE(p.product_length_cm * p.product_height_cm * p.product_width_cm, NULL) AS product_volume_cm3,
+
+    -- FEATURES (new: order complexity)
+    i.num_items,
+
+    -- FEATURES (new: seller reputation)
+    ss.seller_order_count,
+    sr.seller_avg_review,
+
     -- LAT/LNG FOR DISTANCE CALCULATION
     c_geo.lat AS customer_lat,
     c_geo.lng AS customer_lng,
@@ -74,6 +108,8 @@ LEFT JOIN aggregated_items i ON o.order_id = i.order_id
 LEFT JOIN products p ON i.product_id = p.product_id
 LEFT JOIN sellers s ON i.seller_id = s.seller_id
 LEFT JOIN aggregated_payments pay ON o.order_id = pay.order_id
+LEFT JOIN seller_stats ss ON i.seller_id = ss.seller_id
+LEFT JOIN seller_reviews sr ON i.seller_id = sr.seller_id
 LEFT JOIN distinct_geo c_geo ON c.customer_zip_code_prefix = c_geo.zip_code
 LEFT JOIN distinct_geo s_geo ON s.seller_zip_code_prefix = s_geo.zip_code
 WHERE o.order_status = 'delivered';
