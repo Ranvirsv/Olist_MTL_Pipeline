@@ -29,7 +29,7 @@ class GatingNetwork(nn.Module):
 
         hidden_layers = []
         for _ in range(self.num_hidden_layers):
-            hidden_layers.extend([nn.Linear(self.hidden_dim, self.hidden_dim), nn.ReLU(), nn.Dropout(0.5)])
+            hidden_layers.extend([nn.Linear(self.hidden_dim, self.hidden_dim), nn.ReLU(), nn.Dropout(0.2)])
             
         self.gate[2:2] = hidden_layers
 
@@ -54,7 +54,7 @@ class ExpertNetwork(nn.Module):
 
         hidden_layers = []
         for _ in range(self.num_hidden_layers):
-            hidden_layers.extend([nn.Linear(self.hidden_dim, self.hidden_dim), nn.ReLU(), nn.Dropout(0.5)])
+            hidden_layers.extend([nn.Linear(self.hidden_dim, self.hidden_dim), nn.ReLU(), nn.Dropout(0.2)])
 
         self.expert[2:2] = hidden_layers
 
@@ -117,7 +117,7 @@ if __name__ == "__main__":
     logger.info("Testing MMoE model")
 
     batch_size = 32
-    input_features = 14 ## acutal features in Olist Traning Data
+    input_features = 21 ## acutal features in Olist Traning Data
     dummy_x = torch.randn(batch_size, input_features)
 
     logger.info(f"Input shape: {dummy_x.shape}")

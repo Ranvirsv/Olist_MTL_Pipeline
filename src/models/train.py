@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 import torch.optim as optim
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, WeightedRandomSampler
 import mlflow
 import mlflow.pytorch
 from dotenv import load_dotenv, find_dotenv, set_key
@@ -13,6 +13,7 @@ from dataset import OlistDataset
 from mmoe import MMoE
 from MTLLoss import MultiTaskLoss
 from sklearn.metrics import mean_squared_error, mean_absolute_error, accuracy_score, balanced_accuracy_score, precision_score, recall_score, f1_score, confusion_matrix
+import joblib
 
 class Trainer:
     def __init__(self, model, train_loader, val_loader, test_loader, params, optimizer, mtl_loss, device='cpu', mlflow_exp_name="Olist_MTL"):
@@ -85,6 +86,8 @@ class Trainer:
             logger.info(f"MLFlow(exp_id: {self.params['exp_num']}) run started. Starting Evaluation")
             self.model.eval()
 
+            delivery_scaler = joblib.load(self.params['delivery_scaler_path'])
+
             with torch.no_grad():
                 batch_del_loss_mae = []
                 batch_sat_acc = []
@@ -92,7 +95,9 @@ class Trainer:
                 batch_sat_rec = []
                 batch_sat_f1 = []
                 batch_sat_bal_acc = []
-                all_targets, all_preds = [], [] 
+                all_targets, all_preds = [], []
+                all_del_targets, all_del_preds = [], []
+
 
                 for X_batch, y_delivery_batch, y_satisfaction_batch in tqdm(self.test_loader):
                     X_batch, y_delivery_batch, y_satisfaction_batch = X_batch.to(self.device), y_delivery_batch.to(self.device), y_satisfaction_batch.to(self.device)
@@ -102,7 +107,11 @@ class Trainer:
                     out_delivery, out_satisfaction = out_delivery.view(-1), torch.sigmoid(out_satisfaction).view(-1)
                     out_satisfaction_labels = (out_satisfaction > 0.5).float()
 
-                    batch_del_loss_mae.append(mean_absolute_error(y_delivery_batch.cpu().numpy(), out_delivery.cpu().numpy()))
+                    ## Inverse-transform delivery predictions/targets back to original scale (days)
+                    out_delivery_orig = delivery_scaler.inverse_transform(out_delivery.cpu().numpy().reshape(-1, 1)).flatten()
+                    y_delivery_orig = delivery_scaler.inverse_transform(y_delivery_batch.cpu().numpy().reshape(-1, 1)).flatten()
+
+                    batch_del_loss_mae.append(mean_absolute_error(y_delivery_orig, out_delivery_orig))
                     batch_sat_acc.append(accuracy_score(y_satisfaction_batch.cpu().numpy(), out_satisfaction_labels.cpu().numpy()))
                     batch_sat_prec.append(precision_score(y_satisfaction_batch.cpu().numpy(), out_satisfaction_labels.cpu().numpy()))
                     batch_sat_rec.append(recall_score(y_satisfaction_batch.cpu().numpy(), out_satisfaction_labels.cpu().numpy()))
@@ -110,8 +119,10 @@ class Trainer:
                     batch_sat_bal_acc.append(balanced_accuracy_score(y_satisfaction_batch.cpu().numpy(), out_satisfaction_labels.cpu().numpy()))
                     all_targets.extend(y_satisfaction_batch.cpu().numpy())
                     all_preds.extend(out_satisfaction_labels.cpu().numpy())
-            
-            avg_delivery_loss_rmse = np.sqrt(mean_squared_error(all_targets, all_preds))
+                    all_del_targets.extend(y_delivery_orig)
+                    all_del_preds.extend(out_delivery_orig)
+
+            avg_delivery_loss_rmse = np.sqrt(mean_squared_error(all_del_targets, all_del_preds))
             avg_delivery_loss_mae = np.mean(batch_del_loss_mae)
             avg_satisfaction_acc = np.mean(batch_sat_acc)
             avg_satisfaction_prec = np.mean(batch_sat_prec)
@@ -119,6 +130,16 @@ class Trainer:
             avg_satisfaction_f1 = np.mean(batch_sat_f1)
             avg_satisfaction_bal_acc = np.mean(batch_sat_bal_acc)
             satisfaction_cm = confusion_matrix(all_targets, all_preds)
+
+            mlflow.log_metrics({
+                'delivery_loss_rmse': avg_delivery_loss_rmse,
+                'delivery_loss_mae': avg_delivery_loss_mae,
+                'satisfaction_acc': avg_satisfaction_acc,
+                'satisfaction_prec': avg_satisfaction_prec,
+                'satisfaction_rec': avg_satisfaction_rec,
+                'satisfaction_f1': avg_satisfaction_f1,
+                'satisfaction_bal_acc': avg_satisfaction_bal_acc
+            })
 
         return avg_delivery_loss_rmse, avg_delivery_loss_mae, avg_satisfaction_acc, avg_satisfaction_prec, avg_satisfaction_rec, avg_satisfaction_f1, avg_satisfaction_bal_acc, satisfaction_cm
 
@@ -140,7 +161,7 @@ class Trainer:
 
                 current_val_loss = [avg_val_del_loss, avg_val_sat_loss]
 
-                if current_val_loss[0] < best_val_loss[0] and current_val_loss[1] < best_val_loss[1]:
+                if current_val_loss[0] <= best_val_loss[0] and current_val_loss[1] <= best_val_loss[1]:
                     best_val_loss = current_val_loss
                     mlflow.pytorch.log_model(self.model, "best_mmoe_model")
                     logger.info("New best model saved!")
@@ -187,7 +208,7 @@ def main():
     with open(test_report_path, 'w') as f:
         f.write("test_delivery_loss_mae, test_delivery_loss_rmse,test_satisfaction_loss_acc,test_satisfaction_loss_prec,test_satisfaction_loss_rec,test_satisfaction_loss_f1,test_satisfaction_loss_bal_acc\n")
     with open(test_cm_path, 'w') as f:
-        f.write("test_cm_tp,test_cm_fp,test_cm_fn,test_cm_tn\n")
+        f.write("test_cm_tn,test_cm_fp,test_cm_fn,test_cm_tp\n")
 
     ## _____________________________________________________________________
     ##                 MODEL PARAMETERS
@@ -196,17 +217,18 @@ def main():
     params = {
         'num_epochs': 10,
         'batch_size': 32,
-        'input_dim': 14,
+        'input_dim': 21,
         'output_dim': 1,
         'learning_rate': 0.001,
-        'num_experts': 5,
+        'num_experts': 3,
         'hidden_dim': 64,
-        'num_hidden_layers': 3,
+        'num_hidden_layers': 1,
         'num_gate_hidden_layers': 0,
-        'temperature': 1.0, 
+        'temperature': 0.7, 
         'exp_num': experiment_num,
         'train_report_path': train_report_path,
-        'test_report_path': test_report_path
+        'test_report_path': test_report_path,
+        'delivery_scaler_path': f"{root_dir}/data/preprocessed/delivery_scaler.pkl"
     }
 
     device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
@@ -218,20 +240,13 @@ def main():
     model = MMoE(input_dim=params['input_dim'], output_dim=params['output_dim'], num_experts=params['num_experts'], hidden_dim=params['hidden_dim'], num_hidden_layers=params['num_hidden_layers'], temperature=params['temperature'])
     model.to(device)
 
-    del_gating_network = nn.Sequential(nn.Linear(params['input_dim'], params['num_experts']), nn.Softmax(dim=1)).to(device)
-    sat_gating_network = nn.Sequential(nn.Linear(params['input_dim'], params['num_experts']), nn.Softmax(dim=1)).to(device)
-
-    model.gate_delivery = del_gating_network
-    model.gate_satisfaction = sat_gating_network
-
-    pos_weight = torch.tensor([3.0]).to(device)  ## Got from the EDA
-    mtl_loss = MultiTaskLoss(nn.HuberLoss(), nn.BCEWithLogitsLoss(pos_weight=pos_weight), torch.tensor([True, False]))
-    optimizer = optim.Adam((list(model.parameters()) + list(mtl_loss.parameters())), lr=params['learning_rate'])
+    mtl_loss = MultiTaskLoss(nn.HuberLoss(), nn.BCEWithLogitsLoss(), torch.tensor([True, False]))
+    optimizer = optim.AdamW((list(model.parameters()) + list(mtl_loss.parameters())), lr=params['learning_rate'], weight_decay=0.01)
 
     ## _____________________________________________________________________
     ##                 DATASET AND DATALOADER
     ## _____________________________________________________________________
-
+    
     train_dataset = OlistDataset(f"{root_dir}/data/preprocessed/train_features.npy", 
                                 f"{root_dir}/data/preprocessed/train_delivery_days.npy", 
                                 f"{root_dir}/data/preprocessed/train_review_score.npy")
@@ -244,8 +259,14 @@ def main():
                                 f"{root_dir}/data/preprocessed/test_delivery_days.npy", 
                                 f"{root_dir}/data/preprocessed/test_review_score.npy")
 
+    class_counts = torch.bincount(train_dataset[:][2].long())
+    class_weights = 1.0 / class_counts.float()
+    sample_weights = class_weights[train_dataset[:][2].long()]
+    
+    sampler = WeightedRandomSampler(sample_weights, num_samples=len(sample_weights), replacement=True)
+
     logger.info("Creating DataLoaders")
-    train_loader = DataLoader(train_dataset, batch_size=params['batch_size'], shuffle=True)
+    train_loader = DataLoader(train_dataset, batch_size=params['batch_size'], sampler=sampler)
     val_loader = DataLoader(val_dataset, batch_size=params['batch_size'], shuffle=False)
     test_loader = DataLoader(test_dataset, batch_size=params['batch_size'], shuffle=False)
     
@@ -256,6 +277,7 @@ def main():
     logger.info("Initializing Trainer")
     trainer = Trainer(model, train_loader, val_loader, test_loader, params, optimizer, mtl_loss, device)
 
+    
     ## _____________________________________________________________________
     ##                 TRAINING
     ## _____________________________________________________________________
@@ -298,18 +320,8 @@ def main():
     logger.info(f"Satisfaction Balanced Accuracy: {satisfaction_bal_acc}")
     logger.info(f"Satisfaction Confusion Matrix: {satisfaction_cm}")
 
-    mlflow.log_metrics({
-        'delivery_loss_rmse': delivery_loss_rmse,
-        'delivery_loss_mae': delivery_loss_mae,
-        'satisfaction_acc': satisfaction_acc,
-        'satisfaction_prec': satisfaction_prec,
-        'satisfaction_rec': satisfaction_rec,
-        'satisfaction_f1': satisfaction_f1,
-        'satisfaction_bal_acc': satisfaction_bal_acc
-    })
-
     with open(f"{report_path}/test_report_{experiment_num}.csv", 'a') as f:
-        f.write(f"{delivery_loss_rmse},{delivery_loss_mae},{satisfaction_acc},{satisfaction_prec},{satisfaction_rec},{satisfaction_f1},{satisfaction_bal_acc}\n")
+        f.write(f"{delivery_loss_mae},{delivery_loss_rmse},{satisfaction_acc},{satisfaction_prec},{satisfaction_rec},{satisfaction_f1},{satisfaction_bal_acc}\n")
 
     with open(f"{report_path}/test_cm_{experiment_num}.csv", 'a') as f:
         f.write(f"{satisfaction_cm[0,0]},{satisfaction_cm[0,1]},{satisfaction_cm[1,0]},{satisfaction_cm[1,1]}\n")

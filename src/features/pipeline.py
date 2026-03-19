@@ -6,8 +6,11 @@ from sklearn.pipeline import Pipeline
 
 def build_preprocessor():
     numeric_features = [
-        'total_freight_value', 'product_weight_g', 
-        'total_payment_value', 'max_installments', 'geo_distance_km'
+        'total_freight_value', 'product_weight_g',
+        'total_payment_value', 'max_installments', 'geo_distance_km',
+        'delivery_lateness_days', 'product_description_length',
+        'product_photos_qty', 'product_volume_cm3', 'num_items',
+        'seller_order_count', 'seller_avg_review'
     ]
 
     cat_features = [
@@ -23,7 +26,10 @@ def build_preprocessor():
         ("scale", StandardScaler())
     ])
 
-    cat_transformer = OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1)
+    cat_transformer = Pipeline(steps=[
+        ("imputer", SimpleImputer(strategy="constant", fill_value="missing_category")),
+        ("encoder", OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1))
+    ])
 
     preprocessor = ColumnTransformer(
         transformers=[

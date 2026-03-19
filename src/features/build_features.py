@@ -4,13 +4,14 @@ from dotenv import load_dotenv
 from pipeline import build_preprocessor
 import os
 from loguru import logger
+from sklearn.preprocessing import StandardScaler
+import joblib
 
 load_dotenv()
 
 def process_targets(df):
     ## Target A: Delivery Days
-    ## For regression tasks, Pytorch needs data in float32 format
-
+    ## For regression tasks, PyTorch needs data in float32 format
     y_delivery_days = df['delivery_days'].astype("float32").values
 
     ## Target B: Review Scores
@@ -54,6 +55,13 @@ def main():
     y_val_delivery_days, y_val_review_score = process_targets(val_df)
     y_test_delivery_days, y_test_review_score = process_targets(test_df)
 
+    ## Normalize delivery targets — fit on train only, transform val/test
+    logger.info("Normalizing delivery targets...")
+    delivery_scaler = StandardScaler()
+    y_train_delivery_days = delivery_scaler.fit_transform(y_train_delivery_days.reshape(-1, 1)).flatten().astype("float32")
+    y_val_delivery_days = delivery_scaler.transform(y_val_delivery_days.reshape(-1, 1)).flatten().astype("float32")
+    y_test_delivery_days = delivery_scaler.transform(y_test_delivery_days.reshape(-1, 1)).flatten().astype("float32")
+
     logger.info("Saving preprocessed data...")
 
     os.makedirs(f"{root_dir}/data/preprocessed", exist_ok=True)
@@ -69,6 +77,9 @@ def main():
     np.save(f"{root_dir}/data/preprocessed/train_review_score.npy", y_train_review_score)
     np.save(f"{root_dir}/data/preprocessed/val_review_score.npy", y_val_review_score)
     np.save(f"{root_dir}/data/preprocessed/test_review_score.npy", y_test_review_score)
+
+    joblib.dump(delivery_scaler, f"{root_dir}/data/preprocessed/delivery_scaler.pkl")
+    logger.info("Delivery scaler saved for inference-time inverse_transform")
 
 if __name__ == "__main__":
     main()
