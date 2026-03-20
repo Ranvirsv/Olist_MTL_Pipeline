@@ -64,7 +64,7 @@ def main():
     root_dir = os.getenv('PROJECT_ROOT')
     X_train_path = f"{root_dir}/data/preprocessed/train_features.npy"
     X_test_path = f"{root_dir}/data/preprocessed/test_features.npy"
-    scaler = joblib.load(f"{root_dir}/data/preprocessed/delivery_scaler.pkl")
+    scaler = joblib.load(f"{root_dir}/src/models/inference/delivery_scaler.pkl")
 
     logger.info(f"Loading data")
     X_train = np.load(X_train_path)
@@ -90,7 +90,7 @@ def main():
     
     logger.info("Loading Model")
     model_name = "MMoE Best Bal_Acc"
-    model_version = 2
+    model_version = 4
     model = mlflow.pytorch.load_model(f"models:/{model_name}/{model_version}")
     model.to(device)
     model.eval()

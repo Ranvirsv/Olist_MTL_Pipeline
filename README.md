@@ -9,6 +9,7 @@
 [![DuckDB](https://img.shields.io/badge/DuckDB-1.5.0-yellow.svg)](https://duckdb.org/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-Deep%20Learning-ee4c2c.svg)](https://pytorch.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-Serving-009688.svg)](https://fastapi.tiangolo.com/)
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-ranvirsv.com-C8A96E.svg)](https://ranvirsv.com/work/olist-mtl-pipeline)
 
 </div>
 
@@ -39,19 +40,18 @@ A Jupyter notebook cannot run in production. This project demonstrates the jump 
 
 ## 🛠 The Tech Stack
 
-| Layer                          | Tool                                                   | Status     |
-| ------------------------------ | ------------------------------------------------------ | ---------- |
-| **Environment & Dependencies** | `uv` _(Rust-based, reproducible virtual environments)_ | ✅ Active  |
-| **Data Engineering (ETL)**     | `DuckDB` _(Serverless analytical SQL)_                 | ✅ Active  |
-| **Data Contracts**             | `Pydantic` _(Strict schema validation)_                | ✅ Active  |
-| **Statistical Research**       | `scipy.stats` _(Hypothesis testing)_                   | ✅ Active  |
-| **Visualization**              | `matplotlib` + `seaborn` _(Custom Plotter library)_    | ✅ Active  |
-| **Data Versioning**            | `DVC` _(Git for massive datasets)_                     | ✅ Active  |
-| **Deep Learning**              | `PyTorch` _(Custom MMoE architecture)_                 | ✅ Active  |
-| **Experiment Tracking**        | `MLflow` _(Hyperparameters & loss curves)_             | ✅ Active  |
-| **Model Export**               | `ONNX Runtime` _(Optimized inference)_                 | 🔲 Planned |
-| **Serving**                    | `FastAPI` _(REST API)_                                 | 🔲 Planned |
-| **CI/CD & UI**                 | `GitHub Actions`, `Docker`, `Streamlit`                | 🔲 Planned |
+| Layer                          | Tool                                                   | Status    |
+| ------------------------------ | ------------------------------------------------------ | --------- |
+| **Environment & Dependencies** | `uv` _(Rust-based, reproducible virtual environments)_ | ✅ Active |
+| **Data Engineering (ETL)**     | `DuckDB` _(Serverless analytical SQL)_                 | ✅ Active |
+| **Data Contracts**             | `Pydantic` _(Strict schema validation)_                | ✅ Active |
+| **Statistical Research**       | `scipy.stats` _(Hypothesis testing)_                   | ✅ Active |
+| **Visualization**              | `matplotlib` + `seaborn` _(Custom Plotter library)_    | ✅ Active |
+| **Data Versioning**            | `DVC` _(Git for massive datasets)_                     | ✅ Active |
+| **Deep Learning**              | `PyTorch` _(Custom MMoE architecture)_                 | ✅ Active |
+| **Experiment Tracking**        | `MLflow` _(Hyperparameters & loss curves)_             | ✅ Active |
+| **Model Export**               | `ONNX Runtime` _(Optimized inference)_                 | ✅ Active |
+| **Serving**                    | `FastAPI` _(REST API)_                                 | ✅ Active |
 
 ---
 
@@ -89,13 +89,20 @@ Olist_MTL_Pipeline/
 ├── src/
 │   ├── etl.py                        # ETL orchestrator + data validation
 │   ├── schemas.py                    # Pydantic data contracts
+│   ├── serve/
+│   │   └── app.py                    # FastAPI serving endpoint (ONNX inference)
 │   ├── models/
 │   │   ├── dataset.py                # Dataset class for PyTorch (with NaN handling)
 │   │   ├── MTLLoss.py                # Learned uncertainty-weighted multi-task loss
 │   │   ├── train.py                  # Training + evaluation + MLflow logging
 │   │   ├── mmoe.py                   # MMoE model class
+│   │   ├── export_onnx.py            # ONNX export from MLflow registry
 │   │   ├── sanity_check.py           # Isolated single-task MLP baseline tests
-│   │   └── SHAP.py                   # SHAP explainability for both task heads
+│   │   ├── SHAP.py                   # SHAP explainability for both task heads
+│   │   └── inference/                # Production inference artifacts
+│   │       ├── mmoe_production.onnx  # Exported ONNX model (20 → 2 outputs)
+│   │       ├── feature_preprocessor.pkl  # Fitted sklearn ColumnTransformer
+│   │       └── delivery_scaler.pkl   # Fitted StandardScaler for target inverse-transform
 │   └── features/
 │       ├── haversine.py              # Haversine distance feature
 │       ├── cyclic.py                 # Cyclic features
@@ -238,18 +245,18 @@ A custom PyTorch `Dataset` that loads the preprocessed `.npy` arrays for feature
 
 ### Training Infrastructure (`src/models/train.py`)
 
-| Hyperparameter       | Value                                       |
-| -------------------- | ------------------------------------------- |
-| `input_dim`          | 20                                          |
-| `num_experts`        | 5                                           |
-| `hidden_dim`         | 64                                          |
-| `num_hidden_layers`  | 1                                           |
-| `num_epochs`         | 10                                          |
-| `batch_size`         | 32                                          |
-| `learning_rate`      | 0.001 (model), 0.01 (loss weights)          |
-| `optimizer`          | Adam (separate param groups)                |
-| `temperature`        | 0.3 (gating softmax)                        |
-| `sampler`            | WeightedRandomSampler                       |
+| Hyperparameter      | Value                              |
+| ------------------- | ---------------------------------- |
+| `input_dim`         | 20                                 |
+| `num_experts`       | 5                                  |
+| `hidden_dim`        | 64                                 |
+| `num_hidden_layers` | 1                                  |
+| `num_epochs`        | 10                                 |
+| `batch_size`        | 32                                 |
+| `learning_rate`     | 0.001 (model), 0.01 (loss weights) |
+| `optimizer`         | Adam (separate param groups)       |
+| `temperature`       | 0.3 (gating softmax)               |
+| `sampler`           | WeightedRandomSampler              |
 
 `WeightedRandomSampler` is used to address the ~5:1 class imbalance in the satisfaction task during training, oversampling the minority (negative review) class without artificially inflating the loss.
 
@@ -327,12 +334,14 @@ A `SHAPExplainer` class wraps the frozen MMoE model and uses **KernelSHAP** to c
 
 **Key findings:**
 
-- **`geo_distance_km`** is the dominant driver — high distance (pink) pushes delivery time predictions strongly positive (up to +10 SHAP units), validating the Haversine engineering step as the most valuable feature.
-- **`day_of_week_sin`** and **`hour_cos`** rank 2nd and 3rd — the day and hour an order is placed meaningfully affects delivery time, likely reflecting warehouse processing schedules, weekend cutoffs, and end-of-day shipping deadlines.
-- **`seller_order_count`** has high-magnitude outliers — very experienced sellers (high order counts) occasionally produce large positive SHAP values, suggesting high-volume sellers may be in remote logistics hubs.
-- **`total_freight_value`** has moderate bidirectional impact — high freight (pink) pushes delivery predictions up, correlating with heavier or more remote shipments.
-- **`seller_state`** and **`product_volume_cm3`** contribute moderately — geographic origin of the seller and package size both influence delivery logistics.
-- Features below the top 7 (`month_sin`, `seller_avg_review`, `product_category_name`, etc.) have minimal individual impact on delivery predictions.
+- **`geo_distance_km`** is the dominant driver — high distance (pink) pushes delivery time predictions strongly positive (up to +8 SHAP units), while short distances (blue) pull strongly negative (down to −6). The Haversine-engineered feature is by far the most valuable predictor.
+- **`day_of_week_sin`** ranks 2nd — the day an order is placed meaningfully shifts delivery predictions, with blue (early-week) values clustering at −2 to −3. This likely reflects warehouse processing schedules and weekend cutoffs.
+- **`seller_order_count`** ranks 3rd with a wide bimodal spread — high-volume sellers (pink) occasionally produce large positive SHAP values (+5 to +7), suggesting experienced sellers may operate from more remote logistics hubs with longer shipping routes.
+- **`total_freight_value`** ranks 4th and shows the widest raw spread — high freight (pink) pushes delivery predictions strongly positive (up to +8), correlating with heavier, bulkier, or more remote shipments. This feature captures shipping complexity directly.
+- **`hour_cos`** ranks 5th — purchase hour has moderate directional impact, likely capturing end-of-day cutoff effects (orders placed after cutoff → next-day processing → +1 day).
+- **`seller_state`** shows a bimodal pattern — certain states (pink) consistently push predictions up by +2 to +5, while others push down. This captures Brazil's uneven logistics infrastructure across regions.
+- **`product_volume_cm3`** shows a counterintuitive pattern — high volume (pink) pushes delivery predictions _negative_ (down to −7). This may reflect that large/heavy items use dedicated freight carriers with faster, more direct logistics than standard mail.
+- Features below rank 7 (`seller_avg_review`, `month_sin`, `product_category_name`, etc.) have minimal individual impact on delivery predictions.
 
 #### Customer Satisfaction — SHAP Summary
 
@@ -340,15 +349,65 @@ A `SHAPExplainer` class wraps the frozen MMoE model and uses **KernelSHAP** to c
 
 **Key findings:**
 
-- **`seller_order_count`** is the single most impactful feature for satisfaction — high-volume sellers (pink) push predictions strongly positive (up to +10 SHAP units), while low-volume sellers (blue) push toward dissatisfied. Seller experience is the strongest proxy for the quality of service a customer will receive.
-- **`hour_cos`** and **`day_of_week_sin`** rank 2nd and 3rd — temporal purchase patterns have significant predictive power, possibly capturing operational efficiency differences (orders placed during business hours vs. off-hours/weekends).
-- **`product_volume_cm3`** ranks 4th — larger products push predictions in both directions with high variance, likely reflecting category-dependent satisfaction patterns (large items may have higher damage/return rates, but also higher engagement when they arrive well).
-- **`seller_avg_review`** ranks 5th — high seller reputation (pink) pushes toward satisfied, confirming that historical seller quality predicts future customer sentiment.
-- **`geo_distance_km`** has moderate impact (6th) — long-distance orders slightly push toward dissatisfied, though less impactful than for delivery predictions.
-- **`total_freight_value`**, **`num_items`**, **`product_category_name`**, and **`max_installments`** have minor contributions — most of the satisfaction signal is captured by seller characteristics and temporal features.
-- **`total_payment_value`**, **`product_photos_qty`**, and **`product_description_length`** rank at the bottom with near-zero SHAP impact.
+- **`seller_order_count`** is the single most impactful feature — high-volume sellers (pink) push predictions strongly toward satisfied (up to +8 SHAP units), while low-volume sellers (blue) push toward dissatisfied (down to −5). Seller experience is the strongest proxy for service quality.
+- **`hour_cos`** and **`day_of_week_sin`** rank 2nd and 3rd — temporal purchase patterns have surprisingly high predictive power. This likely captures operational efficiency differences: orders placed during business hours may be processed faster and more carefully than off-hours/weekend orders.
+- **`product_volume_cm3`** ranks 4th with bidirectional spread — larger products push predictions in both directions with high variance, reflecting category-dependent satisfaction patterns.
+- **`seller_state`** ranks 5th with a bimodal pattern — some seller regions consistently produce higher satisfaction, possibly reflecting regional logistics infrastructure quality.
+- **`total_freight_value`** ranks 6th — high freight (pink) pushes slightly toward satisfied, counterintuitively. This may reflect that customers paying premium shipping get faster, more reliable delivery.
+- **`seller_avg_review`** ranks 7th and shows a counterintuitive pattern — high seller reputation (pink) pushes predictions _negative_ (down to −5). This is likely a suppression effect: after `seller_order_count` captures the primary seller signal, residual variation in avg_review may flag cases where even "good" sellers occasionally disappoint, and those complaints carry more predictive weight.
+- **`month_sin`** and **`num_items`** have moderate but narrow impact — seasonal patterns and multi-item order complexity contribute marginally.
+- **`geo_distance_km`** ranks surprisingly low (13th) for satisfaction despite being the #1 delivery driver — suggesting customers care about the _experience_ of delivery (seller responsiveness, packaging quality) more than absolute geographic distance.
+- **`total_payment_value`**, **`product_photos_qty`**, **`product_description_length`**, **`customer_state`**, and **`hour_sin`** rank at the bottom with near-zero SHAP impact.
 
-> The SHAP analysis reveals an important architectural insight: the two tasks share features (`geo_distance_km`, `seller_order_count`, temporal features) but prioritize them very differently. Delivery is dominated by geography and logistics features, while satisfaction is dominated by seller reputation and experience. This divergence is precisely what MMoE's task-specific gating is designed to handle, allowing shared experts to learn common representations while the gates route relevant signals to each task head.
+> **Note:** These SHAP plots were generated from a model that still included `delivery_lateness_days` as a feature. It ranked #11 for delivery and #14 for satisfaction with negligible impact in both — reinforcing the decision to remove it from the feature set due to target leakage concerns.
+
+> **Architectural insight:** The two tasks share features (`geo_distance_km`, `seller_order_count`, temporal features) but prioritize them very differently. Delivery is dominated by geography and logistics features, while satisfaction is dominated by seller experience and temporal patterns. This divergence is precisely what MMoE's task-specific gating is designed to handle, allowing shared experts to learn common representations while the gates route relevant signals to each task head.
+
+---
+
+## Phase 4 — ONNX Export ✅
+
+### Model Export (`src/models/export_onnx.py`)
+
+The best model (Run 12) is loaded from the **MLflow Model Registry** and exported to ONNX format for production inference:
+
+- **Input**: `[batch_size, 20]` float32 tensor
+- **Outputs**: `delivery_days` (regression logit) and `satisfaction_logits` (classification logit)
+- **Dynamic batch axis** allows single-request and batched inference
+- Model size: ~320KB total (ONNX graph + external data)
+
+The fitted `StandardScaler` (delivery target inverse-transform) and `ColumnTransformer` (feature preprocessing) are persisted as pickle files alongside the ONNX model in `src/models/inference/`.
+
+---
+
+## Phase 5 — FastAPI Serving ✅
+
+### REST API (`src/serve/app.py`)
+
+A production FastAPI endpoint that serves real-time predictions:
+
+- **`POST /predict`** — Accepts order features as JSON, returns predicted delivery days and satisfaction score
+- **Lifespan management** — ONNX session, feature scaler, and target scaler are loaded once at startup and cleared on shutdown
+- **Haversine distance** computed server-side from customer/seller lat/lng coordinates
+- **Pydantic validation** on all input fields with NaN-to-None sanitization
+- **CORS middleware** enabled for cross-origin frontend requests
+
+```
+POST /predict → { "delivery_days": 12.3, "review_score": 1 }
+```
+
+Where `review_score = 1` means satisfied (predicted review >= 4 stars).
+
+---
+
+## Phase 6 — Deployment ✅
+
+### Live Deployment
+
+| Platform           | URL                                                                                  | Purpose                                    |
+| ------------------ | ------------------------------------------------------------------------------------ | ------------------------------------------ |
+| **Render**         | [olist-ai-api.onrender.com](https://olist-ai-api.onrender.com)                       | FastAPI + ONNX Runtime serving             |
+| **Portfolio Demo** | [ranvirsv.com/work/olist-mtl-pipeline](https://ranvirsv.com/work/olist-mtl-pipeline) | Interactive map-based demo calling the API |
 
 ---
 
@@ -358,6 +417,6 @@ A `SHAPExplainer` class wraps the frozen MMoE model and uses **KernelSHAP** to c
 - [x] **Phase 1 — EDA & Hypothesis Testing** — Statistical validation of architecture assumptions
 - [x] **Phase 2 — Feature Engineering** — Haversine distance, temporal features, encoding pipelines
 - [x] **Phase 3 — MMoE Model + MLflow** — Multi-gate Mixture-of-Experts in PyTorch, 37-run experiment tracking, SHAP explainability
-- [ ] **Phase 4 — Model Export** — ONNX Runtime optimized inference
-- [ ] **Phase 5 — Serving** — FastAPI REST endpoint
-- [ ] **Phase 6 — CI/CD & UI** — GitHub Actions, Docker, Streamlit dashboard
+- [x] **Phase 4 — Model Export** — ONNX Runtime optimized inference
+- [x] **Phase 5 — Serving** — FastAPI REST endpoint with Pydantic validation
+- [x] **Phase 6 — Deployment** — Render cloud hosting, portfolio demo at [ranvirsv.com](https://ranvirsv.com/work/olist-mtl-pipeline)
