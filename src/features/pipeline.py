@@ -8,7 +8,6 @@ def build_preprocessor():
     numeric_features = [
         'total_freight_value', 'product_weight_g',
         'total_payment_value', 'max_installments', 'geo_distance_km',
-        # 'delivery_lateness_days', 
         'product_description_length',
         'product_photos_qty', 'product_volume_cm3', 'num_items',
         'seller_order_count', 'seller_avg_review'

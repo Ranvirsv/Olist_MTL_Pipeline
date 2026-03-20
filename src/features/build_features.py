@@ -78,8 +78,12 @@ def main():
     np.save(f"{root_dir}/data/preprocessed/val_review_score.npy", y_val_review_score)
     np.save(f"{root_dir}/data/preprocessed/test_review_score.npy", y_test_review_score)
 
-    joblib.dump(delivery_scaler, f"{root_dir}/data/preprocessed/delivery_scaler.pkl")
-    logger.info("Delivery scaler saved for inference-time inverse_transform")
+
+    # Also save to src/models/inference/ so the scalers are git-tracked and available for deployment
+    os.makedirs(f"{root_dir}/src/models/inference", exist_ok=True)
+    joblib.dump(delivery_scaler, f"{root_dir}/src/models/inference/delivery_scaler.pkl")
+    joblib.dump(preprocessor, f"{root_dir}/src/models/inference/feature_preprocessor.pkl")
+    logger.info("Scalers saved to data/preprocessed/ and src/models/inference/ (git-tracked)")
 
 if __name__ == "__main__":
     main()
