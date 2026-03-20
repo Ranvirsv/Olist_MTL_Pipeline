@@ -10,7 +10,7 @@ import onnxruntime as rt
 from src.features.haversine import haversine_distance
 from contextlib import asynccontextmanager
 from loguru import logger
-from typing import Any
+from typing import Any, Optional
 import math
 
 ##=====================================================================================
@@ -27,12 +27,12 @@ if _features_dir not in sys.path:
 ##=====================================================================================
 
 class OrderFeatures(BaseModel):
-    customer_city: str = None
+    customer_city: Optional[str] = None
     customer_state: str = Field(..., min_length=2, max_length=2)
     price: float = Field(..., ge=0.0)
     total_freight_value: float = Field(..., ge=0.0)
     product_weight_g: float = Field(..., ge=0.0)
-    product_category_name: str = None
+    product_category_name: Optional[str] = None
     seller_state: str = Field(..., max_length=2)
     total_payment_value: float = Field(..., ge=0.0)
     max_installments: int = Field(..., ge=0)
