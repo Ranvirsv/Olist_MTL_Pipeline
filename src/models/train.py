@@ -47,6 +47,7 @@ class Trainer:
             loss, loss_delivery, loss_satisfaction = self.mtl_loss(out_delivery, out_satisfaction, y_delivery_batch, y_satisfaction_batch)
 
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.mtl_loss.parameters(), max_norm=1.0)
             self.optimizer.step()
 
             total_loss_delivery += loss_delivery.item()
@@ -81,8 +82,8 @@ class Trainer:
 
             return avg_loss_delivery, avg_loss_satisfaction
 
-    def evaluate(self):
-        with mlflow.start_run(run_name=f"MMoE_Exp_{self.params['exp_num']}"):
+    def evaluate(self, run_id):
+        with mlflow.start_run(run_id=run_id):
             logger.info(f"MLFlow(exp_id: {self.params['exp_num']}) run started. Starting Evaluation")
             self.model.eval()
 
@@ -110,6 +111,7 @@ class Trainer:
                     ## Inverse-transform delivery predictions/targets back to original scale (days)
                     out_delivery_orig = delivery_scaler.inverse_transform(out_delivery.cpu().numpy().reshape(-1, 1)).flatten()
                     y_delivery_orig = delivery_scaler.inverse_transform(y_delivery_batch.cpu().numpy().reshape(-1, 1)).flatten()
+
 
                     batch_del_loss_mae.append(mean_absolute_error(y_delivery_orig, out_delivery_orig))
                     batch_sat_acc.append(accuracy_score(y_satisfaction_batch.cpu().numpy(), out_satisfaction_labels.cpu().numpy()))
@@ -151,14 +153,14 @@ class Trainer:
             best_val_loss = [float('inf'), float('inf')]
 
             for epoch in range(self.params['num_epochs']):
-                if epoch == 5:
-                    for param in self.model.delivery_head.parameters():
-                        param.requires_grad = False
-                    for param in self.model.gate_delivery.parameters():
-                        param.requires_grad = False
+                if epoch == 3:
                     for param in self.mtl_loss.parameters():
                         param.requires_grad = False
-                
+                    for param in self.model.gate_delivery.parameters():
+                        param.requires_grad = True
+                    for param in self.model.gate_satisfaction.parameters():
+                        param.requires_grad = True
+
                 logger.info(f"Epoch {epoch+1}/{self.params['num_epochs']}")
                 avg_train_del_loss, avg_train_sat_loss = self._train_one_epoch()
                 avg_val_del_loss, avg_val_sat_loss = self._validate()
@@ -223,21 +225,21 @@ def main():
     ## _____________________________________________________________________
     
     params = {
-        'num_epochs': 10,
-        'batch_size': 32,
+        'num_epochs': 25,
+        'batch_size': 256,
         'input_dim': 20,
         'output_dim': 1,
         'learning_rate': 0.001,
         'loss_learning_rate': 0.01,
         'num_experts': 5,
         'hidden_dim': 64,
-        'num_hidden_layers': 1,
+        'num_hidden_layers': 2,
         'num_gate_hidden_layers': 0,
-        'temperature': 0.3, 
+        'temperature': 1.0, 
         'exp_num': experiment_num,
         'train_report_path': train_report_path,
         'test_report_path': test_report_path,
-        'delivery_scaler_path': f"{root_dir}/data/preprocessed/delivery_scaler.pkl"
+        'delivery_scaler_path': f"{root_dir}/src/models/inference/delivery_scaler.pkl"
     }
 
     device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
@@ -249,7 +251,7 @@ def main():
     model = MMoE(input_dim=params['input_dim'], output_dim=params['output_dim'], num_experts=params['num_experts'], hidden_dim=params['hidden_dim'], num_hidden_layers=params['num_hidden_layers'], temperature=params['temperature'])
     model.to(device)
 
-    mtl_loss = MultiTaskLoss(nn.HuberLoss(), nn.BCEWithLogitsLoss(pos_weight=torch.tensor([1/1.25]).to(device)), torch.tensor([True, False]))
+    mtl_loss = MultiTaskLoss(nn.HuberLoss(), nn.BCEWithLogitsLoss().to(device), torch.tensor([True, False]))
     optimizer = optim.Adam([
         {'params': model.parameters(), 'lr': params['learning_rate']},
         {'params': mtl_loss.parameters(), 'lr': params['loss_learning_rate']}
@@ -317,7 +319,7 @@ def main():
     model = mlflow.pytorch.load_model(model_uri)
     model.to(device)
     trainer.model = model
-    delivery_loss_rmse, delivery_loss_mae, satisfaction_acc, satisfaction_prec, satisfaction_rec, satisfaction_f1, satisfaction_bal_acc, satisfaction_cm = trainer.evaluate()
+    delivery_loss_rmse, delivery_loss_mae, satisfaction_acc, satisfaction_prec, satisfaction_rec, satisfaction_f1, satisfaction_bal_acc, satisfaction_cm = trainer.evaluate(run_id)
 
     ##_____________________________________________________________________
     ##                 METRICS LOGGING

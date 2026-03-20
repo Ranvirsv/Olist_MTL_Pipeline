@@ -11,7 +11,7 @@ def main():
     mlflow.set_tracking_uri(f"http://{ip_address}")
 
     # 1. Load your best model
-    model = mlflow.pytorch.load_model("models:/MMoE Best Bal_Acc/2")
+    model = mlflow.pytorch.load_model("models:/MMoE Best Bal_Acc/4")
     model.to("cpu")
     model.eval()
 
@@ -28,7 +28,7 @@ def main():
         output_names=["delivery_days", "satisfaction_logits"],
         dynamic_axes={"input_features": {0: "batch_size"}} # Allows batch size to change
     )
-    print("✅ Successfully exported to ONNX!")
+    print("Successfully exported to ONNX!")
 
 if __name__ == "__main__":
     main()

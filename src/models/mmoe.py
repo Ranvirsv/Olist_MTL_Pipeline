@@ -29,7 +29,7 @@ class GatingNetwork(nn.Module):
 
         hidden_layers = []
         for _ in range(self.num_hidden_layers):
-            hidden_layers.extend([nn.Linear(self.hidden_dim, self.hidden_dim), nn.ReLU(), nn.Dropout(0.2)])
+            hidden_layers.extend([nn.Linear(self.hidden_dim, self.hidden_dim), nn.ReLU(), nn.Dropout(0.3)])
             
         self.gate[2:2] = hidden_layers
 
@@ -54,7 +54,7 @@ class ExpertNetwork(nn.Module):
 
         hidden_layers = []
         for _ in range(self.num_hidden_layers):
-            hidden_layers.extend([nn.Linear(self.hidden_dim, self.hidden_dim), nn.ReLU(), nn.Dropout(0.2)])
+            hidden_layers.extend([nn.Linear(self.hidden_dim, self.hidden_dim), nn.ReLU(), nn.Dropout(0.3)])
 
         self.expert[2:2] = hidden_layers
 
