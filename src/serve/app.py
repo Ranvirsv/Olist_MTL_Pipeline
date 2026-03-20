@@ -5,6 +5,7 @@ import pandas as pd
 import joblib
 from pydantic import BaseModel, field_validator, Field
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 import onnxruntime as rt
 from src.features.haversine import haversine_distance
 from contextlib import asynccontextmanager
@@ -105,6 +106,16 @@ async def lifespan(app: FastAPI):
     app.state.target_scaler = None
 
 app = FastAPI(title="Olist Logistics AI", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
 
 def sigmoid(x):
     return 1 / (1 + np.exp(-x))
